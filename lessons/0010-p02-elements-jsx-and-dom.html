@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P02-L02 从 JSX 到 DOM</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P02-L02">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P02 · Lesson 2 / 9</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P02 · Elements &amp; Host DOM</p>
+        <h1>把 JSX 降低成普通数据</h1>
+        <p class="lede">先实现最小的“描述 → DOM”直通路径。你会设计 element 数据结构、规范化文本 children，并用白名单范围处理属性与事件。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">难度：基础</span><span class="meta-item">产出：element 契约与首次静态渲染</span></div>
+      </header>
+
+      <section class="lesson-section" id="jsx">
+        <h2>先看转换，不要把 JSX 当模板字符串</h2>
+        <pre><code>输入概念：&lt;button id="save"&gt;Save {count}&lt;/button&gt;
+
+编译后的形状：
+createElement(
+  "button",
+  { id: "save" },
+  "Save ",
+  count
+)</code></pre>
+        <p>JSX 语法由编译步骤消除。你的运行时真正接收的是类型、props 和 children；因此先不用 JSX 也能测试核心模型。</p>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>手工展开三种 JSX</h3></div><p>选择一个宿主元素、一个嵌套列表和一个函数组件调用，手工写出它们预期转换后的调用树。再用编译器 playground 核对。</p><p class="deliverable"><strong>交付：</strong>三组“JSX → 调用 → element 数据”转换记录。</p></div>
+      </section>
+
+      <section class="lesson-section" id="element-contract">
+        <h2>定义最小 element 契约</h2>
+        <div class="concept-grid">
+          <div class="card"><b>type</b><p>字符串表示宿主节点；函数稍后表示函数组件。</p></div>
+          <div class="card"><b>props</b><p>保存普通属性、事件和统一后的 children。</p></div>
+          <div class="card"><b>text element</b><p>把字符串和数字包装成与其他节点同形的数据。</p></div>
+          <div class="card"><b>children</b><p>本课程先约定为扁平数组；更复杂规范化列入边界。</p></div>
+        </div>
+        <p>在写实现前先决定 <code>null</code>、布尔值、嵌套数组如何处理。可以暂不支持，但测试必须把选择写清楚，不能让偶然行为变成 API。</p>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>先写数据形状测试</h3></div><ol><li>无 props 的元素仍得到稳定的 children 容器。</li><li>字符串与数字变成文本描述。</li><li>两个嵌套元素保持顺序。</li><li>对暂不支持的 child 给出明确测试或错误。</li></ol><p class="deliverable"><strong>交付：</strong>element 工厂的输入 / 输出表和至少四个测试。</p></div>
+      </section>
+
+      <section class="lesson-section" id="dom-boundary">
+        <h2>把 DOM 操作集中在宿主边界</h2>
+        <p>静态版本可以递归创建 DOM，但不要把“遍历 element”与“如何更新 DOM property”揉成一个函数。把宿主操作单独列出：</p>
+        <div class="table-wrap"><table><thead><tr><th>输入类别</th><th>最小行为</th><th>需要测试的风险</th></tr></thead><tbody>
+          <tr><td>文本</td><td>创建文本节点并设置内容</td><td><code>0</code> 不应消失</td></tr>
+          <tr><td>普通 property</td><td>设置到 DOM 对象</td><td>更新与移除必须可区分</td></tr>
+          <tr><td>事件</td><td>按约定识别并注册监听器</td><td>替换 handler 时不能重复触发</td></tr>
+          <tr><td><code>children</code></td><td>只用于遍历</td><td>不能作为 DOM property 写入</td></tr>
+        </tbody></table></div>
+        <div class="callout danger"><span class="callout-title">安全边界</span><p>不要为了“像 React”而支持任意 HTML 字符串注入。P02 不需要实现 <code>dangerouslySetInnerHTML</code>；文本应走文本节点路径。</p></div>
+      </section>
+
+      <section class="lesson-section" id="implementation">
+        <h2>需要你亲自完成的最小垂直切片</h2>
+        <ol class="decision-tree">
+          <li>让 element 工厂只生成普通对象，不访问 DOM。</li>
+          <li>让宿主工厂根据描述创建元素节点或文本节点。</li>
+          <li>让静态 renderer 递归连接父子并挂到容器。</li>
+          <li>用一个嵌套两层、含事件和数字文本的页面验证。</li>
+        </ol>
+        <details><summary>提示 1：文本统一的价值</summary><p>如果文本也有 <code>type</code> 与 <code>props</code>，后续 Fiber 遍历无需在每个阶段判断 primitive。</p></details>
+        <details><summary>提示 2：仍卡在事件识别</summary><p>先定义“哪些 prop key 是事件”的纯函数，再单独测试字符串规则；DOM 注册只是它的消费者。</p></details>
+        <details><summary>提示 3：不要继续扩范围</summary><p>本课只要求首次静态挂载。更新、删除与复用留到 reconciliation 课。</p></details>
+      </section>
+
+      <section class="lesson-section" id="check">
+        <h2>自查与验收</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="transform" id="p02l02-a"><label for="p02l02-a">我能闭卷把 JSX 展开为调用和 element 对象。</label></li>
+          <li><input type="checkbox" data-progress="contract" id="p02l02-b"><label for="p02l02-b">element 工厂的边界行为已有测试。</label></li>
+          <li><input type="checkbox" data-progress="render" id="p02l02-c"><label for="p02l02-c">嵌套元素、文本、property 与事件能首次挂载。</label></li>
+          <li><input type="checkbox" data-progress="separation" id="p02l02-d"><label for="p02l02-d">数据构造、树遍历与 DOM 操作没有混成一个职责。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0009-p02-observe-rendering-contract.html"><small>上一课</small>观察渲染契约</a><a class="next" href="0011-p02-fiber-work-units.html"><small>下一课</small>把递归改造成工作单元</a></nav></section>
+    </main>
+    <aside class="sidebar">
+      <section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 4</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>先测数据，再碰 DOM。</p></section>
+      <section class="side-panel"><h2>页内目录</h2><ul class="side-links"><li><a href="#jsx">JSX 转换</a></li><li><a href="#element-contract">element 契约</a></li><li><a href="#dom-boundary">DOM 边界</a></li><li><a href="#implementation">实现切片</a></li></ul></section>
+    </aside>
+  </div>
+  <footer class="page-footer">P02-L02 · element 是描述，不是 DOM</footer>
+</body>
+</html>

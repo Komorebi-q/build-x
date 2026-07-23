@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P03-L02 解析一个模块资产</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P03-L02">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P03 · Lesson 2 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P03 · Asset Pipeline</p>
+        <h1>把一个源文件变成可检查的模块资产</h1>
+        <p class="lede">先稳定单文件边界：读源码、解析 AST、提取静态依赖、转换模块语法，最后返回纯数据资产。先不递归，也不生成 bundle。</p>
+        <div class="meta-strip"><span class="meta-item">45–70 分钟</span><span class="meta-item">核心：AST 与依赖提取</span><span class="meta-item">产出：asset 契约和单元测试</span></div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>先理解：parser 不负责文件系统解析</h2>
+        <div class="flow-row" aria-label="单模块处理流水线"><div class="flow-node">source text</div><span class="arrow">→</span><div class="flow-node">AST</div><span class="arrow">→</span><div class="flow-node">dependency specifiers</div><span class="arrow">→</span><div class="flow-node">transformed code</div></div>
+        <p>AST 能告诉你“这里有一个 <code>ImportDeclaration</code>，source 是某个字符串”。它不能单独告诉你这个字符串最终对应哪个文件；那需要 importer 所在目录和你声明的解析规则。</p>
+        <div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th><th>暂时不要混入</th></tr></thead><tbody>
+          <tr><td><code>id</code></td><td>模块表可使用的稳定标识</td><td>不要把遍历序号误当永久文件身份</td></tr>
+          <tr><td><code>filename</code></td><td>规范化后的源文件身份</td><td>不要保存未经解析的 <code>./x.js</code></td></tr>
+          <tr><td><code>dependencies</code></td><td>源码中出现的静态 specifier 列表</td><td>此处还不是 child id</td></tr>
+          <tr><td><code>code</code></td><td>runtime 能执行的转换后代码</td><td>不要在这一步拼整个 bundle</td></tr>
+          <tr><td><code>mapping</code></td><td>本模块 specifier 到 child id 的局部映射</td><td>建图前可以为空或尚不存在</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="lesson-section" id="ast-lab">
+        <h2>实验：从语法表面跳到节点类型</h2>
+        <p>在 AST Explorer 或你选择的 parser 输出中比较以下四类文本。只记录与依赖发现有关的节点路径和关键字段，不要抄整棵 AST。</p>
+        <pre><code>import value from "./dep.js";
+import "./polyfill.js";
+const text = "import fake from './ghost.js'";
+// import ignored from "./comment.js";</code></pre>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>制作最小 AST 观察表</h3></div><p>对每行写下：是否形成依赖、目标节点类型、specifier 所在字段、为什么正则容易误判。再增加一个 <code>export { value } from "./dep.js"</code>，明确它是否在你的核心范围。</p><p class="deliverable"><strong>交付：</strong>五行 AST 观察表和一条范围决定。</p></div>
+        <div class="callout warning"><span class="callout-title">静态 import 不等于所有模块依赖语法</span><p>P03 核心只要求你声明并测试的静态 import 子集。重导出、动态 <code>import()</code>、CommonJS <code>require</code> 和非 JavaScript 资源都要么实现并测试，要么清楚报“不支持”，不能悄悄漏边。</p></div>
+      </section>
+
+      <section class="lesson-section" id="contract">
+        <h2>亲自完成：定义单文件纯边界</h2>
+        <p>将文件系统读取与“源码 → 资产信息”尽量分开，测试才能传入字符串而不依赖真实目录。下面是算法轮廓，不是可复制实现：</p>
+        <pre><code>分析一个模块(规范文件名, 源码):
+  用 module parsing goal 解析源码
+  遍历 AST，只收集已声明支持的依赖节点
+  通过选定 transform 把模块语法改写成 runtime 契约
+  返回资产数据，不访问子依赖
+
+读取一个模块(文件名):
+  读取文本
+  调用“分析一个模块”</code></pre>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>先写测试，再写资产函数</h3></div><ol>
+          <li>无 import：依赖数组为空，业务表达式仍保留在转换结果中。</li>
+          <li>默认、命名和副作用 import：按源码顺序提取三个 specifier。</li>
+          <li>字符串与注释内的伪 import：不得产生依赖。</li>
+          <li>非法语法：返回或抛出你定义的结构化错误，至少保留文件名与位置。</li>
+          <li>同一源码重复分析：除分配 id 的策略外，输出应可比较且稳定。</li>
+        </ol><p class="deliverable"><strong>交付：</strong>asset 数据形状、五组测试名称、红绿测试摘要；实现由你亲自完成。</p></div>
+      </section>
+
+      <section class="lesson-section" id="transform">
+        <h2>转换层的真实职责</h2>
+        <p>Minipack 使用 Babel 把 ESM 语法转成调用 <code>require(specifier)</code> 并写入 <code>exports</code> 的代码。Babel 官方明确说明：CommonJS transform 只转换 import/export 语法，并不知道不同环境的模块解析算法。因此：</p>
+        <ul>
+          <li>“发现依赖”来自 AST 遍历；“把 ESM 变成 runtime 能执行的代码”来自 transform。</li>
+          <li>“specifier 对应哪个模块 id”仍由你的 graph/resolver 决定。</li>
+          <li>transform 成功不表示你完整实现了原生 ESM 的链接、live binding、循环求值或异步模块。</li>
+        </ul>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>对照转换前后建立契约</h3></div><p>选一个默认 import + 命名 export 的隔离示例，只圈出 import 如何变成加载调用、export 如何进入导出对象。写下 runtime 必须注入的形参和对象，不需要解释 Babel 的全部 helper。</p><p class="deliverable"><strong>交付：</strong>一张“ESM 语法 → runtime 期待”对照表。</p></div>
+      </section>
+
+      <section class="lesson-section" id="hints">
+        <h2>逐级提示</h2>
+        <details><summary>提示 1：parser 选项</summary><p>确认 parser 按 module 而不是 script 解析；同时记录源码文件名，以便错误和后续 source map 能指回来源。</p></details>
+        <details><summary>提示 2：访问哪个节点</summary><p>AST visitor 应针对依赖声明的节点类型读取其 <code>source.value</code>，不要遍历所有 StringLiteral 后猜用途。</p></details>
+        <details><summary>提示 3：错误位置</summary><p>现代 Babel parser 默认可提供节点与语法错误的行列信息。把文件名与 parser 原始位置包进你自己的错误契约。</p></details>
+        <details><summary>提示 4：测试难写时</summary><p>若测试必须创建大量临时文件才能检查 AST 提取，说明读取与分析两个职责可能还黏在一起。</p></details>
+      </section>
+
+      <section class="lesson-section" id="acceptance">
+        <h2>本课验收</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="ast" id="p03l02-a"><label for="p03l02-a">我能从 AST 节点而非词面文本识别已支持的静态依赖。</label></li>
+          <li><input type="checkbox" data-progress="shape" id="p03l02-b"><label for="p03l02-b">我定义了 asset 字段及各字段的生命周期。</label></li>
+          <li><input type="checkbox" data-progress="tests" id="p03l02-c"><label for="p03l02-c">单文件测试覆盖无依赖、多种 import、伪 import 和语法错误。</label></li>
+          <li><input type="checkbox" data-progress="transform" id="p03l02-d"><label for="p03l02-d">我能说明 transform 与 resolve 的职责边界。</label></li>
+          <li><input type="checkbox" data-progress="evidence" id="p03l02-e"><label for="p03l02-e">我保存了红绿测试摘要和一张转换对照表。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>优先核对：</strong><a href="https://babeljs.io/docs/babel-parser">Babel Parser</a> 的 <code>sourceType</code>、位置和 AST 输出说明，<a href="https://babeljs.io/docs/babel-traverse">Babel Traverse</a> 的按节点类型 visitor，以及 <a href="https://babeljs.io/docs/babel-plugin-transform-modules-commonjs">ESM → CommonJS transform</a> 的语义边界。参考实现只读 <a href="../sources/minipack/src/minipack.js">Minipack 源码</a> 的单资产部分。任何节点字段不确定时，先拿最小输入观察后再问我。</p></div></section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0018-p03-observe-bundler-contract.html"><small>上一课</small>观察打包契约</a><a class="next" href="0020-p03-resolve-and-build-graph.html"><small>下一课</small>解析路径并建立图</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>先让单模块边界可测，再进入递归建图。</p></section><section class="side-panel"><h2>关键问题</h2><ul class="side-links"><li><a href="#ast-lab">AST 观察</a></li><li><a href="#contract">资产契约</a></li><li><a href="#transform">转换边界</a></li><li><a href="../reference/module-bundler-field-guide.html">打包器速查</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P03-L02 · 一个模块先成为纯数据，图才有稳定节点</footer>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P01 Promise 机制速查</title>
+  <link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P01 · Reference</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="reference-page">
+      <header class="lesson-hero">
+        <p class="eyebrow">P01 · 随查文档</p>
+        <h1>Promise 机制速查</h1>
+        <p class="lede">把状态、reaction、链式传播、resolution procedure 和调度边界压缩到一页。遇到实现分支时先查这里，再回规范定位条款。</p>
+        <div class="meta-strip">
+          <span class="meta-item">Promises/A+</span>
+          <span class="meta-item">ECMAScript Promise Jobs</span>
+          <span class="meta-item">适合打印</span>
+        </div>
+      </header>
+
+      <section class="reference-section" id="vocabulary">
+        <h2>一、先统一词汇</h2>
+        <div class="reference-grid">
+          <div class="term">
+            <b>promise</b>
+            <p>拥有符合规范行为的 <code>then</code> 方法的对象或函数。</p>
+          </div>
+          <div class="term">
+            <b>thenable</b>
+            <p>只要定义了可调用的 <code>then</code>，就可能被吸收；它不一定是本实现创建的 Promise。</p>
+          </div>
+          <div class="term">
+            <b>pending</b>
+            <p>尚未锁定最终结果，可以转向 fulfilled 或 rejected。</p>
+          </div>
+          <div class="term">
+            <b>fulfilled</b>
+            <p>拥有一个不再变化的 fulfillment value。</p>
+          </div>
+          <div class="term">
+            <b>rejected</b>
+            <p>拥有一个不再变化的 rejection reason；reason 可以是任意 JavaScript 值。</p>
+          </div>
+          <div class="term">
+            <b>settled</b>
+            <p>fulfilled 或 rejected 的统称；settled 后不能再切换状态。</p>
+          </div>
+          <div class="term">
+            <b>resolved</b>
+            <p>结果已被“锁定”。它可能已 settled，也可能正在跟随一个仍 pending 的 thenable。</p>
+          </div>
+          <div class="term">
+            <b>reaction</b>
+            <p>处理 fulfillment 或 rejection 的记录，通常还携带派生 Promise 的能力。</p>
+          </div>
+        </div>
+        <div class="callout warning">
+          <span class="callout-title">最常见的术语错误</span>
+          <p><strong>resolved 不等于 fulfilled。</strong>当 Promise resolve 到另一个 pending Promise 时，它已不能被第二次 resolve，但仍可能保持 pending。</p>
+        </div>
+      </section>
+
+      <section class="reference-section" id="states">
+        <h2>二、状态机只允许单向迁移</h2>
+        <div class="state-flow" aria-label="Promise 状态机">
+          <div class="state-card pending">PENDING<span class="branch-label">初始状态</span></div>
+          <span class="arrow">→</span>
+          <div class="state-card fulfilled">FULFILLED<span class="branch-label">value 固定</span></div>
+          <span class="arrow">或</span>
+          <div class="state-card rejected">REJECTED<span class="branch-label">reason 固定</span></div>
+        </div>
+        <ul>
+          <li>第一次有效的 resolve / reject 决定结果，之后的调用必须忽略。</li>
+          <li>executor 在构造期间同步调用；reaction handler 不在当前调用栈内调用。</li>
+          <li>“值不变”指身份不再变化，不代表对象被深度冻结。</li>
+        </ul>
+      </section>
+
+      <section class="reference-section" id="then-law">
+        <h2>三、<code>then</code> 的四条传播规律</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>父 Promise 结果</th>
+                <th>选中的 handler</th>
+                <th>handler 行为</th>
+                <th>派生 Promise</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>fulfilled</td>
+                <td><code>onFulfilled</code></td>
+                <td>返回普通值 <code>x</code></td>
+                <td>通过 <code>[[Resolve]](child, x)</code> 决定</td>
+              </tr>
+              <tr>
+                <td>rejected</td>
+                <td><code>onRejected</code></td>
+                <td>返回普通值 <code>x</code></td>
+                <td>通常转为 fulfilled；这是错误恢复</td>
+              </tr>
+              <tr>
+                <td>任一状态</td>
+                <td>对应 handler</td>
+                <td>抛出 <code>e</code></td>
+                <td>以 <code>e</code> rejected</td>
+              </tr>
+              <tr>
+                <td>任一状态</td>
+                <td>handler 缺失</td>
+                <td>不执行用户函数</td>
+                <td>原 value / reason 透明传递</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p><code>then</code> 每次都返回一个新的 Promise。不要把 handler 的返回值直接塞进 child；必须先进入 resolution procedure。</p>
+      </section>
+
+      <section class="reference-section" id="resolution">
+        <h2>四、Promise Resolution Procedure</h2>
+        <p>输入是派生 Promise <code>child</code> 与 handler 返回值 <code>x</code>。实现时按顺序做决定，不能随意交换步骤。</p>
+        <ol class="decision-tree">
+          <li><strong><code>child === x</code>？</strong>是则以 <code>TypeError</code> 拒绝，阻止直接自解析。</li>
+          <li><strong><code>x</code> 不是对象也不是函数？</strong>直接以 <code>x</code> fulfilled。</li>
+          <li><strong>读取一次 <code>x.then</code>。</strong>getter 若抛错，以该错误 rejected；不要重复读取。</li>
+          <li><strong><code>then</code> 不可调用？</strong>把整个 <code>x</code> 当普通值 fulfilled。</li>
+          <li><strong>以 <code>x</code> 为 <code>this</code> 调用 <code>then</code>。</strong>传入递归 resolve 与 reject，并用 once guard 保证第一次调用获胜。</li>
+          <li><strong>调用 <code>then</code> 时抛错？</strong>若回调尚未被调用则 reject；否则忽略这个迟到的异常。</li>
+        </ol>
+        <div class="callout danger">
+          <span class="callout-title">危险捷径</span>
+          <p>只用 <code>instanceof</code> 判断 Promise 会漏掉跨实现、跨 realm 和手写 thenable；多次读取 <code>x.then</code> 也会被有副作用的 getter 破坏。</p>
+        </div>
+      </section>
+
+      <section class="reference-section" id="scheduling">
+        <h2>五、调度边界</h2>
+        <div class="flow-row" aria-label="Promise reaction 调度顺序">
+          <div class="flow-node">当前 JS 调用栈</div>
+          <span class="arrow">→</span>
+          <div class="flow-node">Promise reaction job</div>
+          <span class="arrow">→</span>
+          <div class="flow-node">下一个 task</div>
+        </div>
+        <ul>
+          <li>Promises/A+ 只要求 handler 在当前栈结束后执行，允许宏任务或微任务方案。</li>
+          <li>现代原生 ECMAScript Promise 会为 reaction 创建 Job，并交给 host 排队。</li>
+          <li>教学实现若要贴近浏览器与 Node 的原生顺序，可把 <code>queueMicrotask</code> 包在可替换的 scheduler 边界后。</li>
+          <li>微任务会持续排空；递归制造微任务可能饿死计时器和渲染。</li>
+        </ul>
+      </section>
+
+      <section class="reference-section" id="tests">
+        <h2>六、最小测试地图</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>区域</th><th>必须验证</th><th>高价值反例</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>状态</td><td>一次性迁移、值或原因固定</td><td>先 resolve 后 reject；executor 先 resolve 再 throw</td></tr>
+              <tr><td>订阅</td><td>pending 时排队、settled 后仍异步、注册顺序</td><td>同一 Promise 注册多个 handler</td></tr>
+              <tr><td>链</td><td>返回值、异常、缺失 handler 的传播</td><td>rejection handler 返回普通值</td></tr>
+              <tr><td>解析</td><td>thenable 吸收、自解析、getter 异常、once guard</td><td>thenable 同时 resolve、reject 并抛错</td></tr>
+              <tr><td>调度</td><td>不在当前栈调用、早于 timer、FIFO</td><td>settled 前后分别注册 handler</td></tr>
+              <tr><td>兼容</td><td>官方 adapter 与 Promises/A+ 套件</td><td>按失败条款定向运行测试</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="reference-section" id="sources">
+        <h2>权威入口</h2>
+        <div class="source-card">
+          <p><strong>行为裁判：</strong><a href="https://promisesaplus.com/">Promises/A+</a>。<strong>原生实现模型：</strong><a href="https://tc39.es/ecma262/multipage/control-abstraction-objects.html#sec-promise-objects">ECMAScript Promise Objects</a>。<strong>兼容性验证：</strong><a href="https://github.com/promises-aplus/promises-tests">promises-aplus-tests</a>。</p>
+        </div>
+      </section>
+
+      <section class="reference-section">
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="../lessons/0001-p01-observe-promise-behavior.html"><small>返回课程</small>P01 第一课</a>
+          <a class="next" href="../TASKS.md"><small>返回总表</small>学习任务总表</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel">
+        <h2>使用方式</h2>
+        <p>先凭记忆回答，再查此页。速查是校正工具，不是替代检索练习。</p>
+      </section>
+      <section class="side-panel">
+        <h2>页内目录</h2>
+        <ul class="side-links">
+          <li><a href="#vocabulary">词汇</a></li>
+          <li><a href="#states">状态机</a></li>
+          <li><a href="#then-law">then 传播</a></li>
+          <li><a href="#resolution">解析程序</a></li>
+          <li><a href="#scheduling">调度边界</a></li>
+          <li><a href="#tests">测试地图</a></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P01 Promise 机制速查 · 依据 Promises/A+ 与 ECMAScript Promise Objects</footer>
+</body>
+</html>

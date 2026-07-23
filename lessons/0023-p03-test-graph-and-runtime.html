@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P03-L06 用夹具锁定图与运行时</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P03-L06">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P03 · Lesson 6 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P03 · Evidence Matrix</p>
+        <h1>别让一个 hello world 替整个流水线作证</h1>
+        <p class="lede">最终输出正确可能只是巧合。本课把 parser、resolver、graph、serializer 与 runtime 分层验证，再用链式和菱形夹具证明它们连接正确。</p>
+        <div class="meta-strip"><span class="meta-item">55–80 分钟</span><span class="meta-item">核心：测试分层</span><span class="meta-item">产出：P03 测试证据包</span></div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>建立证据矩阵</h2>
+        <div class="table-wrap"><table><thead><tr><th>层级</th><th>最低证据</th><th>它排除的假阳性</th></tr></thead><tbody>
+          <tr><td>asset 单元测试</td><td>AST 依赖列表、转换结果关键形状、语法错误位置</td><td>正则恰好匹配简单示例</td></tr>
+          <tr><td>resolver 单元测试</td><td>importer + specifier → canonical filename</td><td>只在当前工作目录碰巧可用</td></tr>
+          <tr><td>graph 单元测试</td><td>节点身份、边、局部 mapping、菱形去重</td><td>最终日志正确但图重复或边接错</td></tr>
+          <tr><td>serializer 契约测试</td><td>产物可解析、作用域隔离、输出确定</td><td>runtime 还没走到损坏文本</td></tr>
+          <tr><td>runtime 单元测试</td><td>局部请求、exports、错误语境、执行轨迹</td><td>只在一层依赖时看不出 mapping 错位</td></tr>
+          <tr><td>端到端测试</td><td>真实夹具 → bundle → 隔离执行 → 业务结果</td><td>各函数单独正确但契约连接失败</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="lesson-section" id="fixtures">
+        <h2>四个核心夹具，各自只证明一件难事</h2>
+        <div class="concept-grid">
+          <div class="card"><b>A · 单模块</b><p>证明入口、wrapper、业务日志和无依赖 mapping 的最小闭环。</p></div>
+          <div class="card"><b>B · 三层链</b><p>证明递归发现、每层相对解析、依赖先返回再恢复父模块。</p></div>
+          <div class="card"><b>C · 同名局部依赖</b><p>两个目录都写 ./util.js，证明 mapping 属于 importer。</p></div>
+          <div class="card"><b>D · 菱形共享依赖</b><p>证明图节点去重，并显式观察有无 runtime cache 的执行差异。</p></div>
+        </div>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>为每个夹具写“只看最终值不够”的断言</h3></div><p>每个夹具至少包含一个结构断言和一个行为断言。例如菱形既断言 shared 在图中只有一个 id，也用副作用计数记录 shared wrapper 实际执行几次。</p><p class="deliverable"><strong>交付：</strong>夹具拓扑图、预期节点/边表、行为事件序列。</p></div>
+      </section>
+
+      <section class="lesson-section" id="diamond">
+        <h2>菱形依赖：把三个结论分别写出来</h2>
+        <div class="table-wrap"><table><thead><tr><th>观察</th><th>核心期预期</th><th>如何解释</th></tr></thead><tbody>
+          <tr><td>shared 源文件被分析几次</td><td>一次</td><td>canonical filename 索引避免重复 asset</td></tr>
+          <tr><td>有几条边指向 shared id</td><td>两条</td><td>共享节点仍保留两个父关系</td></tr>
+          <tr><td>shared wrapper 执行几次</td><td>取决于已声明缓存策略</td><td>核心若不含缓存，应明确记录两次及其与 ESM 的差距</td></tr>
+        </tbody></table></div>
+        <p>若你提前实现了缓存，测试应期待一次；若按课程核心暂不缓存，测试应把“两次”命名为已知教学限制，而不是把它当理想语义。第 7 课再用状态表加入缓存。</p>
+      </section>
+
+      <section class="lesson-section" id="negative">
+        <h2>负向测试：错误也要跨阶段保留语境</h2>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>至少完成四条失败路径</h3></div><ol>
+          <li><strong>非法语法：</strong>文件名、行、列和 parser 原因可见。</li>
+          <li><strong>不支持的 specifier：</strong>明确规则与收到的值，不尝试猜包名。</li>
+          <li><strong>文件不存在：</strong>包含 importer、raw specifier 与候选 canonical path。</li>
+          <li><strong>runtime mapping 缺失：</strong>包含 parent module id 与请求字符串。</li>
+        </ol><p class="deliverable"><strong>交付：</strong>错误快照或结构化字段断言。不要只断言“会 throw”。</p></div>
+        <div class="callout warning"><span class="callout-title">构建失败时不要留下貌似成功的旧产物</span><p>若你的 CLI 写文件，先在内存完成建图和生成，再以明确策略更新输出。至少用测试证明失败不会把半截 bundle 当作最新成功结果。</p></div>
+      </section>
+
+      <section class="lesson-section" id="determinism">
+        <h2>确定性与可观察图</h2>
+        <p>固定输入连续构建两次，比较：</p>
+        <ul>
+          <li>节点列表与边列表；</li>
+          <li>模块 id 分配；</li>
+          <li>产物字节或哈希；</li>
+          <li>业务事件序列。</li>
+        </ul>
+        <p>如果绝对路径、时间戳或对象枚举顺序进入产物，先判断它是否是语义必需信息。调试图可以显示相对路径，内部仍保留 canonical identity。</p>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>保存一次完整操作轨迹</h3></div><p>从入口开始，记录 asset 发现顺序、每条 resolved edge、模块表记录和 runtime 进入/退出事件。选择一条最终日志，反向追到它来自哪个源文件、哪个 module id 和哪条父 mapping。</p><p class="deliverable"><strong>交付：</strong>一份可读 trace 和一次反向追踪说明。</p></div>
+      </section>
+
+      <section class="lesson-section" id="debug">
+        <h2>现象 → 不变量排查表</h2>
+        <div class="table-wrap"><table><thead><tr><th>现象</th><th>优先检查</th></tr></thead><tbody>
+          <tr><td>嵌套依赖找不到</td><td>resolve 是否相对 importer 目录，而非进程 cwd</td></tr>
+          <tr><td>同名 util 加载错文件</td><td>mapping 是否误做成全局 specifier 表</td></tr>
+          <tr><td>菱形图出现两个 shared 节点</td><td>是否在创建 child 前查 canonical filename 索引</td></tr>
+          <tr><td>两个模块变量冲突</td><td>转换代码是否各自处于 wrapper 作用域</td></tr>
+          <tr><td>默认导出得到 undefined</td><td>Babel interop 输出与 runtime exports 契约是否一致</td></tr>
+          <tr><td>构建时就出现业务日志</td><td>是否错误执行源模块来发现依赖</td></tr>
+          <tr><td>连续构建产物不同</td><td>图遍历、id 分配或元数据是否含不稳定输入</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="lesson-section" id="acceptance">
+        <h2>本课验收</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="matrix" id="p03l06-a"><label for="p03l06-a">测试矩阵覆盖五个阶段和端到端连接。</label></li>
+          <li><input type="checkbox" data-progress="fixtures" id="p03l06-b"><label for="p03l06-b">四个核心夹具各有结构断言与行为断言。</label></li>
+          <li><input type="checkbox" data-progress="diamond" id="p03l06-c"><label for="p03l06-c">我分开证明了资产去重、边保留和执行次数。</label></li>
+          <li><input type="checkbox" data-progress="errors" id="p03l06-d"><label for="p03l06-d">四条失败路径保留足够源语境。</label></li>
+          <li><input type="checkbox" data-progress="trace" id="p03l06-e"><label for="p03l06-e">连续构建确定，并完成一次从输出反向追踪到源模块。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>对照：</strong><a href="../sources/minipack/src/minipack.js">Minipack 源码开头声明的省略项</a>帮助你设计能暴露重复解析、缓存与循环限制的测试；<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import">MDN import 语义</a>用于判断哪些行为只是教学 runtime 的近似。若测试只告诉你“结果不对”，把夹具缩到第一层出现分叉的证据再问我。</p></div></section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0022-p03-run-bundle-runtime.html"><small>上一课</small>运行 bundle runtime</a><a class="next" href="0024-p03-model-boundaries-and-extensions.html"><small>下一课</small>探索模型边界</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>最终值、图结构和执行轨迹要相互印证。</p></section><section class="side-panel"><h2>页内导航</h2><ul class="side-links"><li><a href="#fixtures">核心夹具</a></li><li><a href="#diamond">菱形结论</a></li><li><a href="#negative">错误契约</a></li><li><a href="#debug">排查表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P03-L06 · 分层证据让正确结果不再依赖巧合</footer>
+</body>
+</html>

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P02-L01 先观察渲染契约</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P02-L01">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P02 · Lesson 1 / 9</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P02 · Renderer Contract</p>
+        <h1>先观察 React 做了什么，再设计自己的渲染器</h1>
+        <p class="lede">这一课不写渲染器。你会把“组件变成界面”拆成输入、计算与 DOM 副作用，并通过实验建立后续实现必须守住的行为契约。</p>
+        <div class="meta-strip">
+          <span class="meta-item">45–60 分钟</span>
+          <span class="meta-item">难度：入门诊断</span>
+          <span class="meta-item">产出：行为记录与 render / commit 图</span>
+        </div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>完成后你应该能够</h2>
+        <div class="objectives">
+          <div class="objective"><b>区分三种对象</b><span>element 描述、Fiber 工作节点、真实 DOM 节点。</span></div>
+          <div class="objective"><b>区分两个阶段</b><span>render 计算“应该变成什么”，commit 才改变宿主环境。</span></div>
+          <div class="objective"><b>说明为什么要分阶段</b><span>计算可以切片，半成品 DOM 不应暴露给用户。</span></div>
+          <div class="objective"><b>设计可观察证据</b><span>用日志、DOM 快照与副作用计数证明行为。</span></div>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="experiment">
+        <h2>实验一：一次更新里发生了什么</h2>
+        <p>准备一个只含计数器和嵌套文本的极小 React 页面。不要阅读框架源码，先在组件体、事件处理器和 DOM 观察点记录顺序。点击一次后回答：</p>
+        <ol>
+          <li>事件处理器何时结束？组件函数何时再次执行？</li>
+          <li>组件函数执行时，页面上的旧 DOM 是否仍可见？</li>
+          <li>一次状态更新是否必然意味着替换整个容器？用节点身份证明。</li>
+          <li>连续安排两次基于旧值的更新，与两次函数式更新，结果是否相同？先预测再运行。</li>
+        </ol>
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>写一份时间线，而不是只记最终数字</h3></div>
+          <p>至少记录“事件开始 → 安排更新 → 事件结束 → 组件计算 → DOM 变化”五个观察点。每个观察点注明你看到了什么证据。</p>
+          <p class="deliverable"><strong>交付：</strong>一张预测 / 实际 / 解释三列表和一条更新顺序时间线。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="pipeline">
+        <h2>把黑盒行为压缩成流水线</h2>
+        <div class="flow-row" aria-label="教学渲染流水线">
+          <div class="flow-node">组件与 props</div><span class="arrow">→</span>
+          <div class="flow-node">element tree</div><span class="arrow">→</span>
+          <div class="flow-node">work tree</div><span class="arrow">→</span>
+          <div class="flow-node">DOM mutations</div>
+        </div>
+        <p>这只是课程的教学模型。真实 React 有更多优先级、缓存、恢复与宿主配置机制；本项目只抽出足以解释核心数据流的最小骨架。</p>
+        <div class="callout warning">
+          <span class="callout-title">不要把 Virtual DOM 当作真实 DOM 的复制品</span>
+          <p>element 是“我想要什么”的普通描述；Fiber 是“这次更新工作做到哪里”的可变记录；DOM 是浏览器持有的宿主对象。三者生命周期不同。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="diagnostic">
+        <h2>前置诊断</h2>
+        <p>闭卷回答。不会的项目不是失败，而是决定后续提示需要多具体。</p>
+        <ol>
+          <li>DOM property 与 HTML attribute 有什么可能的区别？举一个你愿意实验验证的例子。</li>
+          <li>深度优先遍历一棵树时，如何只用 <code>child</code>、<code>sibling</code>、<code>parent</code> 找到下一个节点？</li>
+          <li>JSX 最终必须变成浏览器能执行的什么形式？</li>
+          <li>为什么“组件函数被调用”不等于“DOM 已经更新”？</li>
+          <li>若工作在中途暂停，哪些数据可以留在内存，哪些副作用不能提前发生？</li>
+        </ol>
+        <details><summary>第 2 题提示 1</summary><p>有 child 时优先向下；没有 child 时，尝试 sibling；仍没有时向上寻找某个祖先的 sibling。</p></details>
+        <details><summary>第 5 题提示 1</summary><p>比较“普通 JavaScript 对象尚未完成”和“用户已经看到一半 DOM 更新”两种中断结果。</p></details>
+      </section>
+
+      <section class="lesson-section" id="scope">
+        <h2>确定 P02 的完成边界</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>本项目必须完成</th><th>本项目明确不承诺</th></tr></thead>
+            <tbody>
+              <tr><td>宿主元素、文本节点、函数组件</td><td>类组件、Context、Suspense、服务端渲染</td></tr>
+              <tr><td>可暂停的 render 工作循环</td><td>复刻 React 的 lane 与完整 scheduler</td></tr>
+              <tr><td>placement / update / deletion</td><td>生产级 keyed diff 与最少 DOM 移动</td></tr>
+              <tr><td>多个按调用顺序独立保存的 <code>useState</code></td><td>完整 Hooks API、effect 生命周期</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="lesson-section">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="timeline" id="p02l01-a"><label for="p02l01-a">我完成了更新顺序的预测、观察和解释。</label></li>
+          <li><input type="checkbox" data-progress="identities" id="p02l01-b"><label for="p02l01-b">我能区分 element、Fiber 与 DOM 的身份和生命周期。</label></li>
+          <li><input type="checkbox" data-progress="diagram" id="p02l01-c"><label for="p02l01-c">我闭卷画出了 render / commit 两阶段图。</label></li>
+          <li><input type="checkbox" data-progress="diagnostic" id="p02l01-d"><label for="p02l01-d">我回答了五个诊断问题并标记薄弱项。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section">
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="0008-p01-acceptance-and-retrospective.html"><small>上一项目</small>P01 验收与复盘</a>
+          <a class="next" href="0010-p02-elements-jsx-and-dom.html"><small>下一课</small>从 JSX 到 DOM</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 4</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>勾选只保存在当前浏览器。</p></section>
+      <section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/react-renderer-field-guide.html">渲染器机制速查</a></li><li><a href="https://react.dev/learn/render-and-commit">React：Render and Commit</a></li><li><a href="../sources/didact/readme.md">本地 Didact 快照说明</a></li></ul></section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P02-L01 · 先建立可验证的渲染契约</footer>
+</body>
+</html>

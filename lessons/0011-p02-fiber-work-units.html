@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P02-L03 把递归改造成 Fiber 工作单元</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P02-L03">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P02 · Lesson 3 / 9</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P02 · Fiber Traversal</p>
+        <h1>让每一步工作都有暂停点</h1>
+        <p class="lede">递归渲染会一路占住调用栈。你将把树转换拆成一个个可恢复的工作单元，并用 child / sibling / parent 指针完成无递归深度优先遍历。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">难度：中等</span><span class="meta-item">产出：Fiber 遍历器与访问序列测试</span></div>
+      </header>
+
+      <section class="lesson-section" id="why">
+        <h2>问题不是“递归慢”，而是缺少控制权</h2>
+        <p>递归函数在返回前由 JavaScript 调用栈保存进度。若一次处理整棵大树，外层调度器无法在节点之间检查预算。Fiber 教学模型把恢复信息放进显式对象，让循环每完成一个节点就能交还控制权。</p>
+        <div class="concept-grid">
+          <div class="card"><b>element</b><p>声明目标 UI，通常短命且可重新创建。</p></div>
+          <div class="card"><b>fiber</b><p>保存一次渲染工作的节点、连接关系和未来副作用。</p></div>
+          <div class="card"><b>unit of work</b><p>处理一个 Fiber，并返回下一个要处理的 Fiber。</p></div>
+          <div class="card"><b>work-in-progress root</b><p>尚未提交的整棵候选树。</p></div>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="shape">
+        <h2>先画 Fiber 形状</h2>
+        <pre><code>FiberNode（概念字段）
+  type / props
+  dom                 可选的宿主节点
+  parent
+  child
+  sibling
+  alternate           之后连接旧 Fiber
+  effectTag           之后描述 DOM 工作</code></pre>
+        <p>本课只需要前六项中的基础部分。先不要实现 <code>alternate</code> 与 <code>effectTag</code> 的行为；把未来字段写在图上，是为了理解数据为何逐步出现。</p>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>把一棵 element tree 手工改画成 Fiber 链</h3></div><p>使用至少三层、两个兄弟节点的树。标出 root 的 child、每个节点的 sibling 和 parent；然后闭卷写出访问顺序。</p><p class="deliverable"><strong>交付：</strong>element 树、Fiber 指针图和预期访问序列。</p></div>
+      </section>
+
+      <section class="lesson-section" id="next">
+        <h2>下一个工作单元的选择规则</h2>
+        <ol class="decision-tree">
+          <li>当前节点有 child：下一个是 child。</li>
+          <li>没有 child 但有 sibling：下一个是 sibling。</li>
+          <li>两者都没有：沿 parent 向上，直到找到拥有 sibling 的祖先。</li>
+          <li>回到 root 仍找不到：遍历完成。</li>
+        </ol>
+        <p>这是“先序深度优先”的显式版本。每次函数调用只处理一个节点，并把恢复点作为返回值交给循环。</p>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>先实现纯遍历，不创建 DOM</h3></div><p>用手工构造的 Fiber 对象收集访问 type。覆盖单节点、直链、多个兄弟、从深层回溯到叔叔节点四种结构。</p><p class="deliverable"><strong>交付：</strong>四个纯数据遍历测试；DOM 测试暂时为零。</p></div>
+      </section>
+
+      <section class="lesson-section" id="perform">
+        <h2>一个工作单元只承担两件事</h2>
+        <div class="flow-row" aria-label="工作单元职责"><div class="flow-node">处理当前 Fiber</div><span class="arrow">→</span><div class="flow-node">建立 child / sibling</div><span class="arrow">→</span><div class="flow-node">返回 next Fiber</div></div>
+        <p>“处理当前 Fiber”在宿主节点路径上可以准备 DOM、读取 children；但现在不要挂载 DOM。你正在构建候选树，不是在向用户展示半成品。</p>
+        <details><summary>提示 1：兄弟节点如何连接</summary><p>遍历 children 数组时，第一项成为 parent.child；后续项连接到前一个 child fiber 的 sibling。</p></details>
+        <details><summary>提示 2：为什么每个 child 都要有 parent</summary><p>叶子没有 child 或 sibling 时，只有 parent 链能帮助它找到祖先的 sibling。</p></details>
+        <details><summary>提示 3：如何防止职责膨胀</summary><p>为“创建 child fibers”和“选择下一个 Fiber”分别写测试。若一个测试必须同时查看 DOM 与访问顺序，边界可能混在一起了。</p></details>
+      </section>
+
+      <section class="lesson-section" id="invariants">
+        <h2>闭卷说出四条不变量</h2>
+        <ul>
+          <li>除 root 外，每个 Fiber 恰有一个 parent。</li>
+          <li>同一 parent 的 children 通过 sibling 链保持原顺序。</li>
+          <li>一次工作单元不会递归处理后代。</li>
+          <li>访问完成后，所有可达 Fiber 恰好被处理一次。</li>
+        </ul>
+      </section>
+
+      <section class="lesson-section"><h2>离开本课前</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="diagram" id="p02l03-a"><label for="p02l03-a">我画出了包含回溯路径的 Fiber 指针图。</label></li>
+        <li><input type="checkbox" data-progress="traversal" id="p02l03-b"><label for="p02l03-b">四种纯遍历测试给出稳定访问序列。</label></li>
+        <li><input type="checkbox" data-progress="unit" id="p02l03-c"><label for="p02l03-c">一次工作单元只处理当前节点并返回 next。</label></li>
+        <li><input type="checkbox" data-progress="invariants" id="p02l03-d"><label for="p02l03-d">我能闭卷解释四条 Fiber 不变量。</label></li>
+      </ul></section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0010-p02-elements-jsx-and-dom.html"><small>上一课</small>从 JSX 到 DOM</a><a class="next" href="0012-p02-schedule-interruptible-render.html"><small>下一课</small>分片执行 render 工作</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 4</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>本课先证明遍历，再接调度器。</p></section><section class="side-panel"><h2>页内目录</h2><ul class="side-links"><li><a href="#why">为何需要 Fiber</a></li><li><a href="#shape">数据形状</a></li><li><a href="#next">next 规则</a></li><li><a href="#perform">工作职责</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P02-L03 · 用显式数据保存渲染进度</footer>
+</body>
+</html>

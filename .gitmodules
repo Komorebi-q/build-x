@@ -1,0 +1,9 @@
+[submodule "sources/build-your-own-x"]
+	path = sources/build-your-own-x
+	url = https://github.com/codecrafters-io/build-your-own-x.git
+[submodule "sources/didact"]
+	path = sources/didact
+	url = https://github.com/pomber/didact.git
+[submodule "sources/minipack"]
+	path = sources/minipack
+	url = https://github.com/ronami/minipack.git

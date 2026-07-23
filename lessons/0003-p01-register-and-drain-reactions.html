@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P01-L03 注册与排空 Promise Reactions</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P01-L03">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P01 · Lesson 3 / 8</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P01 · Reaction Queue</p>
+        <h1>状态确定时，通知所有观察者</h1>
+        <p class="lede">把 <code>then</code> 看成“注册 reaction”，而不是“立刻调用回调”。你将连接状态机与队列，同时保持注册顺序和异步边界。</p>
+        <div class="meta-strip">
+          <span class="meta-item">35–50 分钟</span>
+          <span class="meta-item">难度：中等</span>
+          <span class="meta-item">产出：reaction 队列测试</span>
+        </div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>先建立 reaction 心智模型</h2>
+        <p>Promise 只有一个状态机，但可以有多个观察者。每次调用 <code>then</code> 都创建一条 reaction 记录；记录至少要知道：</p>
+        <div class="concept-grid">
+          <div class="card"><b>成功处理器</b><p>父 Promise fulfilled 时可能被选择。</p></div>
+          <div class="card"><b>失败处理器</b><p>父 Promise rejected 时可能被选择。</p></div>
+          <div class="card"><b>派生能力</b><p>下一课用于决定 <code>then</code> 返回的新 Promise。</p></div>
+          <div class="card"><b>注册顺序</b><p>同一父 Promise 的 reactions 按 <code>then</code> 调用顺序处理。</p></div>
+        </div>
+        <div class="flow-row" aria-label="reaction 数据流">
+          <div class="flow-node">then 注册</div>
+          <span class="arrow">→</span>
+          <div class="flow-node">reaction queue</div>
+          <span class="arrow">→</span>
+          <div class="flow-node">settle 后调度</div>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="cases">
+        <h2>先覆盖五种时间关系</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>注册时状态</th><th>随后发生</th><th>期望</th></tr></thead>
+            <tbody>
+              <tr><td>pending</td><td>未来 fulfilled</td><td>先排队，结算后异步调用成功 handler</td></tr>
+              <tr><td>pending</td><td>未来 rejected</td><td>先排队，结算后异步调用失败 handler</td></tr>
+              <tr><td>已 fulfilled</td><td>此时调用 <code>then</code></td><td>不入长期队列，仍异步调度成功 handler</td></tr>
+              <tr><td>已 rejected</td><td>此时调用 <code>then</code></td><td>不入长期队列，仍异步调度失败 handler</td></tr>
+              <tr><td>任意</td><td>连续注册三次</td><td>每个对应 handler 一次，顺序与注册一致</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>为每行写“调用前 / 调用后”断言</h3></div>
+          <p>每个测试先断言 handler 尚未被调用，再触发可控调度，最后断言调用次数、参数和顺序。这样才能证明不是偶然“最终执行了”。</p>
+          <p class="deliverable"><strong>交付：</strong>五组测试草稿，每组明确同步阶段与调度后阶段。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="scheduler">
+        <h2>把调度器做成边界</h2>
+        <p>真实 timer 会让测试变慢且不稳定。先把“安排稍后执行”抽象成一个 <code>enqueue(job)</code> 边界：</p>
+        <pre><code>生产环境 scheduler
+  接受一个 job
+  把 job 安排到当前调用栈之后
+
+测试环境 scheduler
+  接受一个 job
+  放入测试可控制的数组
+  由测试显式 flushNext 或 flushAll</code></pre>
+        <p>第六课会决定生产 scheduler 如何贴近原生微任务。本课只要求两个不变量：<strong>绝不 inline 调用</strong>、<strong>保持 FIFO</strong>。</p>
+        <div class="task">
+          <div class="task-head"><span class="task-number">2</span><h3>先测试 scheduler 契约</h3></div>
+          <ol>
+            <li>enqueue 后，job 尚未执行。</li>
+            <li>flush 后，job 恰好执行一次。</li>
+            <li>连续 enqueue 三个 job，flushAll 后顺序不变。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>一个可控 scheduler 测试替身和三个契约测试。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="queue-design">
+        <h2>连接注册与结算</h2>
+        <p>用下面的伪代码检查数据流，不要逐字翻译：</p>
+        <pre><code>then(onFulfilled, onRejected)
+  创建 reaction 记录
+  如果父 Promise pending：追加到队列
+  否则：把“处理该 reaction”交给 scheduler
+  返回一个新的 pending Promise（传播规则下一课补齐）
+
+settle(nextState, result)
+  若已被决定：忽略
+  保存状态与结果
+  取出并清空当前 reaction 队列
+  按注册顺序把每条 reaction 交给 scheduler</code></pre>
+        <div class="callout">
+          <span class="callout-title">为什么先取出并清空？</span>
+          <p>它减少重复排空与无用引用，也让“处理 reaction 时又注册新 reaction”的行为更容易推理。新注册项看到的是已 settled 状态，会单独调度。</p>
+        </div>
+        <div class="task">
+          <div class="task-head"><span class="task-number">3</span><h3>实现队列，但暂不处理链式结果</h3></div>
+          <ol>
+            <li>先让 pending 注册场景变绿。</li>
+            <li>再让已 settled 后注册场景变绿。</li>
+            <li>最后加入三条 reaction 的 FIFO 测试。</li>
+            <li>确认成功只选成功 handler，失败只选失败 handler。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>五种时间关系全部通过；记录你的 reaction 数据结构。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="hints">
+        <h2>逐级提示</h2>
+        <details>
+          <summary>提示 1：pending 时注册的 handler 永远不执行</summary>
+          <p>检查结算路径是否在更新 state / result 后遍历了当时的 reactions，并把每条记录交给 scheduler。</p>
+        </details>
+        <details>
+          <summary>提示 2：已 fulfilled 后注册的 handler 同步执行了</summary>
+          <p>“状态已知”只代表不必等待状态变化，不代表可以跳过 scheduler。settled 分支也必须 enqueue。</p>
+        </details>
+        <details>
+          <summary>提示 3：第三个 handler 偶尔先执行</summary>
+          <p>先验证是你的队列破坏了顺序，还是测试使用了多个不同调度机制。让本课所有 reaction 都通过同一个 scheduler 边界。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section" id="self-check">
+        <h2>自查：状态与队列是否真的分开</h2>
+        <ol>
+          <li>为什么三个 <code>then</code> 不需要三个 Promise 状态机？</li>
+          <li>为什么已 settled 的 Promise 仍不能 inline 调用新 handler？</li>
+          <li>reaction 队列中应保存“调用结果”还是“未来要执行的记录”？</li>
+          <li>清空队列后，后续 <code>then</code> 如何被处理？</li>
+        </ol>
+        <details>
+          <summary>核对关键词</summary>
+          <p>单一状态、多个订阅；一致的异步边界；保存 reaction 而非预先计算；settled 分支直接创建并调度新 reaction。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="matrix" id="p01l03-a"><label for="p01l03-a">我覆盖了五种注册与结算时间关系。</label></li>
+          <li><input type="checkbox" data-progress="scheduler" id="p01l03-b"><label for="p01l03-b">我有可控 scheduler 及其契约测试。</label></li>
+          <li><input type="checkbox" data-progress="fifo" id="p01l03-c"><label for="p01l03-c">多个 reactions 按注册顺序且只执行一次。</label></li>
+          <li><input type="checkbox" data-progress="model" id="p01l03-d"><label for="p01l03-d">我能解释状态机和 reaction 队列的职责边界。</label></li>
+        </ul>
+        <div class="source-card">
+          <p><strong>本课主来源：</strong><a href="https://promisesaplus.com/#the-then-method">Promises/A+ §2.2</a>，重点是 2.2.2–2.2.6；原生记录模型可对照 <a href="https://tc39.es/ecma262/multipage/control-abstraction-objects.html#sec-performpromisethen">PerformPromiseThen</a>。</p>
+        </div>
+        <p>如果测试发生偶发乱序，把最小测试和 scheduler 契约发给 AI。先分析时间线，不要让 AI重写实现。</p>
+      </section>
+
+      <section class="lesson-section">
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="0002-p01-test-the-state-machine.html"><small>上一课</small>用测试锁定状态机</a>
+          <a class="next" href="0004-p01-chain-with-a-new-promise.html"><small>下一课</small>让 then 返回新 Promise</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel">
+        <h2>本课进度 <span data-progress-label>0 / 4</span></h2>
+        <div class="progress-track"><div class="progress-fill" data-progress-fill></div></div>
+        <p>先证明时间关系，再继续链式传播。</p>
+      </section>
+      <section class="side-panel">
+        <h2>随手查</h2>
+        <ul class="side-links">
+          <li><a href="../reference/promise-field-guide.html#then-law">then 传播速查</a></li>
+          <li><a href="https://promisesaplus.com/#point-36">A+ 多次 then</a></li>
+          <li><a href="https://tc39.es/ecma262/multipage/control-abstraction-objects.html#sec-promisereaction-records">PromiseReaction Records</a></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P01-L03 · 注册与排空 Promise Reactions</footer>
+</body>
+</html>

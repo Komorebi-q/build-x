@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P01-L07 运行 Promises/A+ 兼容测试</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P01-L07">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P01 · Lesson 7 / 8</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P01 · Conformance</p>
+        <h1>让外部测试套件挑战你的实现</h1>
+        <p class="lede">自己的测试容易只覆盖自己想得到的情况。官方 Promises/A+ 套件会用大量对抗性 thenable 验证 <code>then</code>；你的任务是按规范条款定位失败，而不是盲目改到全绿。</p>
+        <div class="meta-strip">
+          <span class="meta-item">40–60 分钟</span>
+          <span class="meta-item">难度：困难</span>
+          <span class="meta-item">产出：兼容性报告</span>
+        </div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>测试套件只需要一个很小的桥</h2>
+        <p><code>promises-aplus-tests</code> 不需要理解你的类名或目录结构。它通过 adapter 取得三个能力：</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>导出</th><th>职责</th><th>是否必需</th></tr></thead>
+            <tbody>
+              <tr><td><code>deferred()</code></td><td>返回 <code>{ promise, resolve, reject }</code>，初始 promise 为 pending</td><td>核心入口</td></tr>
+              <tr><td><code>resolved(value)</code></td><td>创建已以 value fulfilled 的 promise</td><td>可选，但有助于覆盖</td></tr>
+              <tr><td><code>rejected(reason)</code></td><td>创建已以 reason rejected 的 promise</td><td>可选，但有助于覆盖</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <span class="callout-title">adapter 不是第二套实现</span>
+          <p>它只把测试套件的三个动作翻译到你的公共 API。若 adapter 里出现状态机、队列或解析逻辑，说明你正在用桥接代码掩盖真实缺陷。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="adapter">
+        <h2>先写 adapter 契约草图</h2>
+        <pre><code>deferred()
+  在构造自定义 Promise 时捕获 resolve 与 reject
+  返回：promise + 两个已捕获函数
+
+resolved(value)
+  使用公开构造方式创建已完成实例
+
+rejected(reason)
+  使用公开构造方式创建已拒绝实例</code></pre>
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>实现最薄 adapter</h3></div>
+          <ol>
+            <li>先只实现 <code>deferred</code>，写一个烟雾测试确认三项身份正确。</li>
+            <li>确认 adapter 的 resolve / reject 自身不会把重复结算错误抛到测试套件外。</li>
+            <li>再按你的公共 API 决定是否提供两个可选导出。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>adapter 文件与一个不含 Promise 逻辑的说明。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="run">
+        <h2>运行全套，再缩小失败范围</h2>
+        <p>在你的学习实现目录中安装并运行测试工具：</p>
+        <pre><code>npm install --save-dev promises-aplus-tests
+npx promises-aplus-tests path/to/your-adapter</code></pre>
+        <p>该 CLI 会把后续选项传给 Mocha，因此可以按条款聚焦：</p>
+        <pre><code>npx promises-aplus-tests path/to/your-adapter --grep "2.3.3"</code></pre>
+        <div class="task">
+          <div class="task-head"><span class="task-number">2</span><h3>保存第一次完整结果</h3></div>
+          <p>第一次失败列表是学习证据，不要清屏。按条款前缀归类，而不是按报错文本逐个打补丁。</p>
+          <p class="deliverable"><strong>交付：</strong>首次通过 / 失败摘要，以及失败最多的前三个规范区域。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="triage">
+        <h2>用条款地图定位不变量</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>失败前缀</th><th>优先检查</th><th>不要先做</th></tr></thead>
+            <tbody>
+              <tr><td>2.2.1</td><td>非函数 handler 是否被忽略</td><td>给所有输入强制包函数</td></tr>
+              <tr><td>2.2.2 / 2.2.3</td><td>只在对应终态、只调用一次、参数身份</td><td>复制或转换 value / reason</td></tr>
+              <tr><td>2.2.4</td><td>是否越过当前执行栈</td><td>随意增加长 timer</td></tr>
+              <tr><td>2.2.6</td><td>同一 Promise reactions 的 FIFO</td><td>并行随机调度</td></tr>
+              <tr><td>2.2.7</td><td>child、返回值、异常、透明传播</td><td>直接返回 parent</td></tr>
+              <tr><td>2.3.1</td><td>child 与 x 直接自解析</td><td>设置任意最大深度</td></tr>
+              <tr><td>2.3.3</td><td>then getter、this、once guard、递归解析</td><td>只用 <code>instanceof</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="task">
+          <div class="task-head"><span class="task-number">3</span><h3>一次修复一个根因簇</h3></div>
+          <ol>
+            <li>选择失败最多的一个条款前缀。</li>
+            <li>用 <code>--grep</code> 只运行该簇。</li>
+            <li>从失败中提取一个最小复现，先加入自己的回归测试。</li>
+            <li>修复对应不变量，运行该簇、自己的测试、最后再跑全套。</li>
+            <li>记录“根因 → 影响条款 → 修复证据”。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>至少一条从官方失败转成自有回归测试的记录。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="scope">
+        <h2>全绿不等于原生 Promise 完成</h2>
+        <p>Promises/A+ 明确聚焦 <code>then</code> 互操作，不规定所有原生构造器与静态方法。即使套件全绿，你自己的测试仍要负责：</p>
+        <ul>
+          <li>executor 是否立即且只调用一次；executor 抛错如何处理。</li>
+          <li>你是否选择了微任务级时序，而不只是“某种异步”。</li>
+          <li><code>catch</code>、后续扩展方法与调试接口的行为。</li>
+          <li>项目自己的模块格式、公共 API 与回归边界。</li>
+        </ul>
+        <div class="callout warning">
+          <span class="callout-title">不要改测试来换全绿</span>
+          <p>官方套件是外部裁判。若你认为条款或测试有问题，先写最小复现、引用规范并单独记录；不要在依赖目录里直接改预期。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="report">
+        <h2>兼容性报告模板</h2>
+        <pre><code>运行环境：
+运行命令：
+首次结果：
+最终结果：
+
+主要失败簇：
+根因判断：
+新增回归测试：
+修复后的证据：
+
+仍未覆盖的原生 Promise 行为：
+与原始教程实现的差异：</code></pre>
+        <p>报告比“终端全绿截图”更重要：它证明你知道哪些行为由 A+ 保证、哪些仍由自己的设计负责。</p>
+      </section>
+
+      <section class="lesson-section">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="adapter" id="p01l07-a"><label for="p01l07-a">adapter 只做 API 翻译，不含业务逻辑。</label></li>
+          <li><input type="checkbox" data-progress="baseline" id="p01l07-b"><label for="p01l07-b">我保存了第一次完整测试结果。</label></li>
+          <li><input type="checkbox" data-progress="triage" id="p01l07-c"><label for="p01l07-c">我按条款修复并新增了回归测试。</label></li>
+          <li><input type="checkbox" data-progress="full" id="p01l07-d"><label for="p01l07-d">官方套件与自己的测试都通过。</label></li>
+          <li><input type="checkbox" data-progress="report" id="p01l07-e"><label for="p01l07-e">我完成了兼容性报告。</label></li>
+        </ul>
+        <div class="source-card">
+          <p><strong>本课主来源：</strong><a href="https://github.com/promises-aplus/promises-tests">Promises/A+ Compliance Test Suite</a> 的官方 adapter 与 CLI 说明；行为条款仍以 <a href="https://promisesaplus.com/">Promises/A+</a> 为准。</p>
+        </div>
+        <p>遇到大量失败时，只把失败簇、最小复现和条款号发给 AI。它应帮助找共同根因，不应替你重写 Promise。</p>
+      </section>
+
+      <section class="lesson-section">
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="0006-p01-align-with-microtasks.html"><small>上一课</small>用微任务对齐调度</a>
+          <a class="next" href="0008-p01-acceptance-and-retrospective.html"><small>下一课</small>验收与复盘</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel">
+        <h2>本课进度 <span data-progress-label>0 / 5</span></h2>
+        <div class="progress-track"><div class="progress-fill" data-progress-fill></div></div>
+        <p>全绿只是证据之一，兼容范围解释同样重要。</p>
+      </section>
+      <section class="side-panel">
+        <h2>随手查</h2>
+        <ul class="side-links">
+          <li><a href="../reference/promise-field-guide.html#tests">最小测试地图</a></li>
+          <li><a href="https://github.com/promises-aplus/promises-tests">官方测试 README</a></li>
+          <li><a href="https://promisesaplus.com/">Promises/A+ 条款</a></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P01-L07 · 运行 Promises/A+ 兼容测试</footer>
+</body>
+</html>

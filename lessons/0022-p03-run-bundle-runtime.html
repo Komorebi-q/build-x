@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P03-L05 运行 bundle runtime</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P03-L05">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P03 · Lesson 5 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P03 · Bundle Runtime</p>
+        <h1>用局部 require 走完模块图</h1>
+        <p class="lede">现在让产物真正执行。重点不是函数有多短，而是每次加载都使用当前父模块的 mapping，把源码 specifier 翻译成 child id，并维持模块作用域与导出对象。</p>
+        <div class="meta-strip"><span class="meta-item">50–75 分钟</span><span class="meta-item">核心：加载契约</span><span class="meta-item">产出：执行轨迹与 runtime 测试</span></div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>先理解两级查找</h2>
+        <div class="flow-row" aria-label="局部模块加载">
+          <div class="flow-node">parent code</div><span class="arrow">→</span>
+          <div class="flow-node">localRequire(specifier)</div><span class="arrow">→</span>
+          <div class="flow-node">parent mapping</div><span class="arrow">→</span>
+          <div class="flow-node">require(childId)</div>
+        </div>
+        <p><code>require(id)</code> 能查全局模块表；转换后的业务代码却只保留原始字符串，例如 <code>require("./util.js")</code>。因此 runtime 必须为每个父模块创建一个闭包，让它携带该父模块自己的 mapping。</p>
+        <div class="callout warning"><span class="callout-title">不能建立一张全局 specifier → id 表</span><p><code>features/a.js</code> 和 <code>features/b.js</code> 都可能导入 <code>./util.js</code>，但目标不同。specifier 只有结合 importer 才有解析意义；build-time mapping 把这个语境带进 runtime。</p></div>
+      </section>
+
+      <section class="lesson-section" id="trace">
+        <h2>手演一次嵌套加载</h2>
+        <p>用 entry → message → name 的链画调用栈。每层至少记录以下列：</p>
+        <div class="table-wrap"><table><thead><tr><th>时刻</th><th>当前 module id</th><th>请求值</th><th>使用哪张 mapping</th><th>得到 child id</th><th>exports 状态</th></tr></thead><tbody>
+          <tr><td>1</td><td>entry</td><td>—</td><td>入口记录</td><td>—</td><td>空对象</td></tr>
+          <tr><td>2</td><td>entry</td><td><code>./message.js</code></td><td>entry.mapping</td><td>message</td><td>入口暂停</td></tr>
+          <tr><td>3</td><td>message</td><td><code>./name.js</code></td><td>message.mapping</td><td>name</td><td>消息暂停</td></tr>
+          <tr><td>4+</td><td colspan="5">由你补全 name 导出、message 恢复、entry 恢复与业务日志顺序</td></tr>
+        </tbody></table></div>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>画完整执行轨迹</h3></div><p>先依据转换后的代码预测，再运行产物采集日志。不要只写最终 <code>hello world</code>；要显示进入 wrapper、解析局部 specifier、返回 exports 和退出 wrapper。</p><p class="deliverable"><strong>交付：</strong>完整轨迹表和一张调用栈图。</p></div>
+      </section>
+
+      <section class="lesson-section" id="contract">
+        <h2>runtime 的最小数据契约</h2>
+        <pre><code>加载模块(moduleId):
+  从 module table 取 wrapper 与当前模块 mapping
+  创建本次模块实例，初始 exports 是一个对象
+  创建只读当前 mapping 的 localRequire
+  调用 wrapper(localRequire, module, module.exports)
+  返回 module.exports
+
+localRequire(rawSpecifier):
+  在当前模块 mapping 中找到 childId
+  调用“加载模块(childId)”</code></pre>
+        <p>这是伪代码。你需要亲自决定并测试错误处理、入口返回值和调试日志接口。核心阶段暂不加入缓存，以便在菱形依赖中清楚观察“图节点去重但执行未去重”的差异。</p>
+        <div class="table-wrap"><table><thead><tr><th>对象</th><th>初始关系</th><th>常见误解</th></tr></thead><tbody>
+          <tr><td><code>module</code></td><td>持有可替换的 <code>module.exports</code></td><td>它不是所有模块共享的全局对象</td></tr>
+          <tr><td><code>exports</code> 形参</td><td>开始时指向同一个初始导出对象</td><td>给局部 <code>exports</code> 重新赋值不等于替换 <code>module.exports</code></td></tr>
+          <tr><td><code>localRequire</code></td><td>闭包捕获当前模块 mapping</td><td>它不是 Node 完整的 require</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="lesson-section" id="implement">
+        <h2>亲自完成：让入口启动并保留可观察性</h2>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>以失败优先实现 runtime</h3></div><ol>
+          <li>单模块：入口业务日志准确执行一次。</li>
+          <li>嵌套链：依赖先完成导出，父模块再继续使用返回值。</li>
+          <li>父级语境：两个目录各自的 <code>./util.js</code> 必须加载到不同 child id。</li>
+          <li>默认与命名导出：结果符合你选定 Babel transform 的输出契约。</li>
+          <li>缺 mapping：错误指出 parent id 与 raw specifier。</li>
+          <li>缺模块记录：错误指出 child id，不能只出现难懂的解构异常。</li>
+        </ol><p class="deliverable"><strong>交付：</strong>六组 runtime 测试与一条真实嵌套执行日志。</p></div>
+      </section>
+
+      <section class="lesson-section" id="observe">
+        <h2>让测试捕获日志，而不是污染断言</h2>
+        <p>测试运行生成程序时，建议把业务侧 <code>console</code> 或 runtime trace 注入/截获到列表，再对事件序列断言。至少区分：</p>
+        <ul>
+          <li><strong>build trace：</strong>读文件、解析、发现边、分配 id；</li>
+          <li><strong>runtime trace：</strong>进入模块、解析局部请求、返回导出、退出模块；</li>
+          <li><strong>application output：</strong>待打包程序自己的日志或结果。</li>
+        </ul>
+        <p>三类日志混在一起时，“构建阶段意外执行源码”很容易被忽略。</p>
+        <details><summary>提示 1：嵌套执行顺序</summary><p>父 wrapper 调用 localRequire 时会暂停，直到 child wrapper 返回 exports。业务日志顺序应由转换代码里的 require 位置决定。</p></details>
+        <details><summary>提示 2：错误早一点</summary><p>localRequire 在调用 child loader 前先验证 raw specifier 是否存在于当前 mapping，能生成更接近源代码的错误。</p></details>
+        <details><summary>提示 3：为何现在不加缓存</summary><p>先用菱形夹具看清无缓存行为，再添加缓存，才能说明它改变了哪个不变量，而不是把一段 Map 代码当魔法。</p></details>
+      </section>
+
+      <section class="lesson-section" id="acceptance">
+        <h2>本课验收</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="trace" id="p03l05-a"><label for="p03l05-a">我画出了 entry → message → name 的完整加载轨迹。</label></li>
+          <li><input type="checkbox" data-progress="local" id="p03l05-b"><label for="p03l05-b">每个 localRequire 只读取所属父模块的 mapping。</label></li>
+          <li><input type="checkbox" data-progress="exports" id="p03l05-c"><label for="p03l05-c">我能解释 module.exports 与初始 exports 形参的关系。</label></li>
+          <li><input type="checkbox" data-progress="tests" id="p03l05-d"><label for="p03l05-d">六组 runtime 正常与失败测试可重复运行。</label></li>
+          <li><input type="checkbox" data-progress="logs" id="p03l05-e"><label for="p03l05-e">build、runtime 与 application 三类观测记录已分开。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>优先核对：</strong><a href="../sources/minipack/src/minipack.js">Minipack runtime 注释</a>解释了两级 require 与 mapping 的动机；<a href="https://babeljs.io/docs/babel-plugin-transform-modules-commonjs">Babel CommonJS transform</a>说明生成代码如何使用 <code>require</code> 与 <code>exports</code>。这里实现的是 bundle 内私有 runtime，不是 Node 的模块加载器。轨迹与预期不一致时，把第一处分叉发给我。</p></div></section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0021-p03-serialize-module-table.html"><small>上一课</small>序列化模块表</a><a class="next" href="0023-p03-test-graph-and-runtime.html"><small>下一课</small>用夹具锁定全过程</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>加载结果、加载过程和失败语境都要有证据。</p></section><section class="side-panel"><h2>页内导航</h2><ul class="side-links"><li><a href="#trace">执行轨迹</a></li><li><a href="#contract">数据契约</a></li><li><a href="#implement">runtime 测试</a></li><li><a href="#observe">分层日志</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P03-L05 · localRequire 把父模块语境从构建期带到运行期</footer>
+</body>
+</html>

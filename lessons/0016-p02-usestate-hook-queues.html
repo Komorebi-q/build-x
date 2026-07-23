@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P02-L08 用调用顺序保存多个 useState</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P02-L08">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P02 · Lesson 8 / 9</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P02 · Hooks &amp; Update Queues</p>
+        <h1>Hook 没有名字，位置就是身份</h1>
+        <p class="lede">为函数组件 Fiber 保存 hooks 数组；每次 render 从索引零开始，按固定调用顺序读取旧 hook、消费更新队列并生成新 hook。</p>
+        <div class="meta-strip"><span class="meta-item">90–120 分钟</span><span class="meta-item">难度：高</span><span class="meta-item">产出：多个独立 state 与更新队列测试</span></div>
+      </header>
+
+      <section class="lesson-section" id="identity">
+        <h2>先回答：第二次 render 如何找到“同一个 state”</h2>
+        <div class="flow-row" aria-label="hook 按位置匹配"><div class="flow-node">old fiber.hooks[0]</div><span class="arrow">→</span><div class="flow-node">第 1 次 useState</div><span class="arrow">→</span><div class="flow-node">new hooks[0]</div></div>
+        <div class="flow-row" aria-label="第二个 hook"><div class="flow-node">old fiber.hooks[1]</div><span class="arrow">→</span><div class="flow-node">第 2 次 useState</div><span class="arrow">→</span><div class="flow-node">new hooks[1]</div></div>
+        <p>这个简化模型没有变量名映射。它只依赖组件在每次 render 中以相同顺序调用 hooks，因此条件分支中的 hook 会让后续位置错位。</p>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>手工推演两个 state 的三次 render</h3></div><p>组件依次声明 count 与 label。第一次初始化，第二次只更新 count，第三次只更新 label。每轮画 old hooks、pending actions、new hooks。</p><p class="deliverable"><strong>交付：</strong>三轮 hook 槽位表，证明两个 state 独立。</p></div>
+      </section>
+
+      <section class="lesson-section" id="hook-record">
+        <h2>一个最小 hook 记录需要什么</h2>
+        <div class="concept-grid">
+          <div class="card"><b>state</b><p>本次 render 计算完成后的状态快照。</p></div>
+          <div class="card"><b>queue</b><p>尚待下一次 render 应用的更新动作。</p></div>
+          <div class="card"><b>hook index</b><p>当前组件 render 中正在读取的位置。</p></div>
+          <div class="card"><b>wip fiber</b><p>当前正在执行的函数组件 Fiber。</p></div>
+        </div>
+        <p>每次执行函数组件前重置 hooks 数组与索引；每次调用 <code>useState</code> 都消费当前位置的旧 hook，按顺序应用其 queue，再把新 hook 放入候选 Fiber。</p>
+      </section>
+
+      <section class="lesson-section" id="actions">
+        <h2>把 setState 理解成“排队动作 + 安排 root 更新”</h2>
+        <pre><code>setState(action) 的概念职责：
+  1. 把 action 放进所属 hook 的 queue
+  2. 以 current root 创建新的 work-in-progress root
+  3. 重置 next unit 与 deletion 集合
+  4. 等待工作循环重新计算整棵候选树</code></pre>
+        <p>不要在 setter 内直接改 DOM，也不要只重算当前组件节点。本课程的简化策略从 root 重新开始，reconciliation 决定哪些 DOM 真正变化。</p>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>先支持函数式 action</h3></div><p>让 action 以旧 state 计算新 state。连续排入两个 increment 后，下一次 render 应按队列顺序折叠，而不是两次都读取同一个旧快照。</p><p class="deliverable"><strong>交付：</strong>空队列、单 action、连续 actions、两个独立 hooks 四组测试。</p></div>
+      </section>
+
+      <section class="lesson-section" id="rules">
+        <h2>用故障实验理解 Hooks 规则</h2>
+        <p>在实验分支中，让第一个 <code>useState</code> 只在条件为真时调用。切换条件后记录第二个 state 从哪个旧槽位读取。不要修复它；先解释为什么顺序身份被破坏。</p>
+        <div class="callout danger"><span class="callout-title">课程边界</span><p>你的实现不必构建静态 lint 规则，但文档和演示必须明确：hooks 只在函数组件顶层、以稳定顺序调用。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>实现双计数器验收页面</h3></div><p>一个组件内放两个独立 state，各有自己的更新按钮；再加一个同时更新两者的按钮。保存 DOM 引用并记录每次组件执行、hook state 与 DOM 提交。</p><p class="deliverable"><strong>交付：</strong>双 state 演示、操作序列和独立性断言。</p></div>
+      </section>
+
+      <section class="lesson-section" id="hints">
+        <h2>逐级提示</h2>
+        <details><summary>提示 1：第二次 render 又回到初始值</summary><p>确认新 Fiber 能通过 alternate 找到旧 Fiber 的 hooks，而不是每次只使用 initial 参数。</p></details>
+        <details><summary>提示 2：两个 state 相互覆盖</summary><p>记录每次 hook 调用前后的 hookIndex；检查索引是在何时递增、组件开始时是否归零。</p></details>
+        <details><summary>提示 3：连续两次更新只增加一次</summary><p>检查队列中保存的是已经计算好的值，还是稍后基于前一结果执行的 action；并确认 action 按注册顺序折叠。</p></details>
+        <details><summary>提示 4：更新后又重复消费旧 action</summary><p>候选 hook 应拥有本轮计算后的 state 与新的待处理队列；已消费动作不能在下一轮再次出现。</p></details>
+      </section>
+
+      <section class="lesson-section" id="questions">
+        <h2>闭卷自查</h2>
+        <ol>
+          <li>为什么 hooks 存在 Fiber 上，而不是存在组件函数局部变量里？</li>
+          <li>为什么 initial state 通常只在没有旧 hook 时使用？</li>
+          <li>setter 为什么只排队而不立刻改变当前 render 中的 state 变量？</li>
+          <li>条件调用 hook 会如何让后续槽位错位？用两个 hooks 画图说明。</li>
+        </ol>
+      </section>
+
+      <section class="lesson-section"><h2>离开本课前</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="slots" id="p02l08-a"><label for="p02l08-a">我画出了两个 hooks 跨三轮 render 的槽位表。</label></li>
+        <li><input type="checkbox" data-progress="queue" id="p02l08-b"><label for="p02l08-b">多个 action 按顺序消费且不会重复消费。</label></li>
+        <li><input type="checkbox" data-progress="independent" id="p02l08-c"><label for="p02l08-c">两个 useState 可独立更新，也可在同一事件中共同更新。</label></li>
+        <li><input type="checkbox" data-progress="rules" id="p02l08-d"><label for="p02l08-d">我能用槽位身份解释 Hooks 顶层调用规则。</label></li>
+      </ul></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0015-p02-function-components.html"><small>上一课</small>支持函数组件</a><a class="next" href="0017-p02-acceptance-and-retrospective.html"><small>下一课</small>P02 验收与复盘</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 4</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>状态身份来自 Fiber + 调用位置。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/react-renderer-field-guide.html#hooks">Hooks 速查</a></li><li><a href="https://react.dev/reference/rules/rules-of-hooks">React：Rules of Hooks</a></li><li><a href="https://react.dev/learn/queueing-a-series-of-state-updates">React：Queueing State Updates</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P02-L08 · 位置决定 Hook 身份，队列决定下一次状态</footer>
+</body>
+</html>

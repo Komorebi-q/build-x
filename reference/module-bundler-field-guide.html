@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P03 模块打包器机制速查</title>
+  <link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P03 · Reference</span></div></header>
+  <div class="page-shell">
+    <main class="reference-page">
+      <header class="lesson-hero">
+        <p class="eyebrow">P03 · 随查文档</p>
+        <h1>模块打包器机制速查</h1>
+        <p class="lede">把 asset、specifier resolution、依赖图、module table 与 bundle runtime 压缩到一页。它描述 P03 的教学模型，不代表完整 ESM 或生产打包器。</p>
+        <div class="meta-strip"><span class="meta-item">Minipack 教学骨架</span><span class="meta-item">ESM / Babel 边界</span><span class="meta-item">适合打印</span></div>
+      </header>
+
+      <section class="reference-section" id="objects">
+        <h2>一、六个对象不要混用</h2>
+        <div class="reference-grid">
+          <div class="term"><b>Raw specifier</b><p>源码 import 中的字符串，例如 <code>./util.js</code>；只有结合 importer 才能解析。</p></div>
+          <div class="term"><b>Canonical filename</b><p>resolver 产出的规范文件身份；用于图去重和错误语境。</p></div>
+          <div class="term"><b>Module id</b><p>bundle 内索引模块记录的稳定键；不是源路径本身的语义替代。</p></div>
+          <div class="term"><b>Asset</b><p>一个源模块的构建期记录：身份、依赖列表、转换代码和局部 mapping。</p></div>
+          <div class="term"><b>Module graph</b><p>从入口可达的有向图；节点是资产，边是 importer 中声明的依赖。</p></div>
+          <div class="term"><b>Module instance</b><p>运行期的 <code>module/exports</code> 状态；图节点唯一不自动保证实例只执行一次。</p></div>
+        </div>
+      </section>
+
+      <section class="reference-section" id="pipeline">
+        <h2>二、总流水线</h2>
+        <div class="flow-row" aria-label="打包器数据流"><div class="flow-node">source + entry</div><span class="arrow">→</span><div class="flow-node">AST / transform</div><span class="arrow">→</span><div class="flow-node">resolve / graph</div><span class="arrow">→</span><div class="flow-node">module table</div><span class="arrow">→</span><div class="flow-node">runtime</div></div>
+        <div class="table-wrap"><table><thead><tr><th>阶段</th><th>主要输入</th><th>主要输出</th><th>禁止偷做</th></tr></thead><tbody>
+          <tr><td>Parse / transform</td><td>filename、source</td><td>AST、specifiers、runtime code</td><td>不递归读取 child，不执行源码</td></tr>
+          <tr><td>Resolve / graph</td><td>importer、specifier、asset</td><td>canonical child、节点、边、mapping</td><td>不拼 bundle，不做 runtime cache</td></tr>
+          <tr><td>Serialize</td><td>完整图、entry id</td><td>module table 与 program text</td><td>不重新发现依赖</td></tr>
+          <tr><td>Runtime</td><td>module table、module id</td><td>exports、业务副作用</td><td>不访问构建期文件系统解析依赖</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="reference-section" id="asset">
+        <h2>三、Asset 字段地图</h2>
+        <div class="table-wrap"><table><thead><tr><th>字段</th><th>来源</th><th>关键不变量</th></tr></thead><tbody>
+          <tr><td><code>id</code></td><td>graph builder 首次发现文件时</td><td>同一 canonical filename 只分配一次</td></tr>
+          <tr><td><code>filename</code></td><td>resolver / entry 规范化</td><td>不使用脱离 importer 的 raw specifier 充当身份</td></tr>
+          <tr><td><code>dependencies</code></td><td>AST visitor</td><td>只含已声明支持的静态依赖，保留源码顺序</td></tr>
+          <tr><td><code>code</code></td><td>transform/code generator</td><td>符合选定 runtime 接口，不声称等于原生 ESM</td></tr>
+          <tr><td><code>mapping</code></td><td>graph builder</td><td>属于当前父 asset：raw specifier → child id</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="reference-section" id="resolution">
+        <h2>四、最小解析契约</h2>
+        <pre><code>resolve(importerFilename, rawSpecifier) → canonicalFilename
+
+核心课建议显式声明：
+  接受：./ 或 ../ 开头的 JavaScript 文件
+  基准：importer 所在目录
+  规范化：. 与 ..；是否解析 symlink 必须说明
+  失败：带 importer、raw specifier、候选路径的结构化错误
+  不包含：bare packages、alias、package exports、URL、动态 import</code></pre>
+        <div class="callout warning"><span class="callout-title">Host-defined 边界</span><p>ECMAScript 不规定所有环境如何把 specifier 映射到具体文件。课程规则只是你打包器的公开契约，不是 Node、浏览器或 Webpack 兼容声明。</p></div>
+      </section>
+
+      <section class="reference-section" id="graph">
+        <h2>五、图构建与菱形不变量</h2>
+        <ol class="decision-tree">
+          <li>规范化入口，创建资产并立刻登记 canonical filename → asset。</li>
+          <li>从工作表取一个 asset，逐个解析它的 raw specifier。</li>
+          <li>child identity 未登记时才创建资产并加入工作表。</li>
+          <li>无论 child 是否新建，都在父 asset.mapping 写 raw specifier → child id。</li>
+          <li>工作表为空时，返回可达资产和 entry id。</li>
+        </ol>
+        <div class="table-wrap"><table><thead><tr><th>菱形问题</th><th>预期</th><th>所属层</th></tr></thead><tbody>
+          <tr><td>shared 被分析几次</td><td>一次</td><td>graph identity index</td></tr>
+          <tr><td>几条边指向 shared</td><td>两条</td><td>parent-local mappings</td></tr>
+          <tr><td>shared wrapper 执行几次</td><td>依缓存策略</td><td>runtime module cache</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="reference-section" id="table">
+        <h2>六、Module table 形状</h2>
+        <pre><code>moduleTable:
+  moduleId → [moduleWrapper, localMapping]
+
+moduleWrapper(localRequire, module, exports):
+  执行该资产的 transformed code
+
+localMapping:
+  当前父模块中的 raw specifier → child moduleId</code></pre>
+        <ul>
+          <li>wrapper 保留模块顶层作用域边界。</li>
+          <li>mapping 是数据，使用可靠序列化；不能做成全局 specifier 表。</li>
+          <li>整份产物应通过 parser 语法检查，并对同一输入保持确定。</li>
+        </ul>
+      </section>
+
+      <section class="reference-section" id="runtime">
+        <h2>七、Runtime 加载轨迹</h2>
+        <div class="flow-row" aria-label="runtime 两级查找"><div class="flow-node">require(parent id)</div><span class="arrow">→</span><div class="flow-node">parent wrapper</div><span class="arrow">→</span><div class="flow-node">localRequire(raw)</div><span class="arrow">→</span><div class="flow-node">parent mapping</div><span class="arrow">→</span><div class="flow-node">require(child id)</div></div>
+        <ul>
+          <li>初始 <code>exports</code> 形参与 <code>module.exports</code> 指向同一个对象。</li>
+          <li>重新给局部 <code>exports</code> 赋值不会自动替换 <code>module.exports</code>。</li>
+          <li>缺 mapping 时错误应带 parent id 与 raw specifier；缺记录时带 child id。</li>
+          <li>build trace、runtime trace 与 application output 分开记录。</li>
+        </ul>
+      </section>
+
+      <section class="reference-section" id="cache">
+        <h2>八、可选模块缓存状态</h2>
+        <div class="table-wrap"><table><thead><tr><th>状态</th><th>动作</th><th>再次请求</th></tr></thead><tbody>
+          <tr><td>absent</td><td>创建实例，并在执行 wrapper 前登记</td><td>进入 loading</td></tr>
+          <tr><td>loading</td><td>可能处于循环</td><td>返回部分 exports 或按策略报错</td></tr>
+          <tr><td>loaded</td><td>wrapper 已完成</td><td>返回同一 module.exports</td></tr>
+          <tr><td>failed（可选）</td><td>wrapper 曾抛错</td><td>明确重抛、删除或重试策略</td></tr>
+        </tbody></table></div>
+        <p>这种缓存能建立 CommonJS 风格模块实例身份，但不自动实现原生 ESM 的实例化、TDZ、live bindings 或循环语义。</p>
+      </section>
+
+      <section class="reference-section" id="debug">
+        <h2>九、现象到不变量</h2>
+        <div class="table-wrap"><table><thead><tr><th>现象</th><th>优先检查</th></tr></thead><tbody>
+          <tr><td>注释/字符串产生 ghost dependency</td><td>是否按 AST 节点类型收集，而非正则扫描</td></tr>
+          <tr><td>嵌套文件路径错误</td><td>resolve 基准是否是 importer 目录</td></tr>
+          <tr><td>同名 util 串线</td><td>mapping 是否错误全局化</td></tr>
+          <tr><td>shared 出现多个 asset</td><td>canonical identity 是否在创建 child 前登记/查询</td></tr>
+          <tr><td>顶层变量冲突</td><td>每段 transformed code 是否在独立 wrapper</td></tr>
+          <tr><td>默认导出 undefined</td><td>transform interop 与 exports 契约是否一致</td></tr>
+          <tr><td>shared 副作用重复</td><td>runtime 是否有 module instance cache</td></tr>
+          <tr><td>循环无限递归</td><td>graph 是否去重；cache 是否在 wrapper 前登记</td></tr>
+          <tr><td>构建时出现业务日志</td><td>是否执行源码来发现依赖</td></tr>
+          <tr><td>相同输入产物漂移</td><td>遍历/id/元数据是否含不稳定顺序或时间</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="reference-section" id="boundaries">
+        <h2>十、教学模型边界</h2>
+        <ul>
+          <li>Babel CommonJS transform 只改写语法，不替打包器解决 resolution。</li>
+          <li>对象式 exports runtime 不等同于原生 ESM Module Records 与 live binding。</li>
+          <li>核心单文件 bundle 不包含 tree shaking、chunk graph、动态加载和生产优化。</li>
+          <li>source map 需要组合每次转换的位置映射，不能靠追加文件名代替。</li>
+          <li>loader/transform hook 与 lifecycle plugin 应有明确阶段、顺序、错误和可变性契约。</li>
+          <li>增量重建需要缓存、反向依赖和失效传播，并以全量构建结果为对照。</li>
+        </ul>
+      </section>
+
+      <section class="reference-section" id="sources">
+        <h2>十一、对照来源</h2>
+        <div class="source-card"><p><strong>课程骨架：</strong><a href="../sources/minipack/README.md">本地 Minipack 快照</a>。<strong>工具契约：</strong><a href="https://babeljs.io/docs/babel-parser">Babel Parser</a>、<a href="https://babeljs.io/docs/babel-traverse">Traverse</a>、<a href="https://babeljs.io/docs/babel-plugin-transform-modules-commonjs">CommonJS transform</a>。<strong>语言边界：</strong><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import">MDN import</a> 与 <a href="https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html">ECMAScript Modules</a>。</p></div>
+      </section>
+
+      <section class="reference-section"><nav class="lesson-nav" aria-label="课程导航"><a href="../lessons/0018-p03-observe-bundler-contract.html"><small>返回课程</small>P03 第一课</a><a class="next" href="../TASKS.md"><small>返回总表</small>学习任务总表</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>使用方式</h2><p>先凭记忆画图或判断，再用此页校正。出现现象时先定位对象与阶段，再选最小夹具。</p></section><section class="side-panel"><h2>页内目录</h2><ul class="side-links"><li><a href="#objects">对象</a></li><li><a href="#pipeline">流水线</a></li><li><a href="#asset">Asset 字段</a></li><li><a href="#resolution">解析</a></li><li><a href="#graph">模块图</a></li><li><a href="#table">模块表</a></li><li><a href="#runtime">Runtime</a></li><li><a href="#cache">缓存</a></li><li><a href="#debug">排查</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P03 模块打包器机制速查 · 构建期图身份与运行期模块身份分开理解</footer>
+</body>
+</html>

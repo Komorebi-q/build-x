@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P01-L08 Promise 项目验收与复盘</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P01-L08">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P01 · Lesson 8 / 8</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P01 · Acceptance</p>
+        <h1>证明你掌握了 Promise，而不只是跑通</h1>
+        <p class="lede">最后一课补齐 <code>catch</code>，收集测试与解释证据，完成闭卷复述和差异记录。只有这些关卡通过，P01 才能在任务总表中勾选。</p>
+        <div class="meta-strip">
+          <span class="meta-item">30–45 分钟</span>
+          <span class="meta-item">综合验收</span>
+          <span class="meta-item">产出：证据包 + 复盘</span>
+        </div>
+      </header>
+
+      <section class="lesson-section" id="catch">
+        <h2>先补齐核心范围：<code>catch</code></h2>
+        <p><code>catch(onRejected)</code> 的核心语义可以由 <code>then(undefined, onRejected)</code> 表达。重点不在多写一个分支，而是确保它复用同一条 child 传播与解析路径。</p>
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>用三个测试逼出 catch</h3></div>
+          <ol>
+            <li>rejection reason 被传给 handler。</li>
+            <li>handler 返回普通值时，catch 返回的 child fulfilled。</li>
+            <li>handler 抛错或返回 thenable 时，沿已有解析规则传播。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>一个薄 <code>catch</code> API 与三个证明它没有复制传播逻辑的测试。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="functional-gate">
+        <h2>关卡一：核心行为</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="states" id="p01l08-a"><label for="p01l08-a">pending / fulfilled / rejected 单向迁移，第一次决定获胜。</label></li>
+          <li><input type="checkbox" data-progress="executor" id="p01l08-b"><label for="p01l08-b">executor 立即执行，异常与迟到异常行为正确。</label></li>
+          <li><input type="checkbox" data-progress="reactions" id="p01l08-c"><label for="p01l08-c">多个 reactions 只调用一次、FIFO 且越过当前栈。</label></li>
+          <li><input type="checkbox" data-progress="chain" id="p01l08-d"><label for="p01l08-d">then 每次返回新 child；返回、抛错和缺失 handler 正确传播。</label></li>
+          <li><input type="checkbox" data-progress="resolution" id="p01l08-e"><label for="p01l08-e">thenable、getter 异常、once guard、递归解析与自解析保护通过。</label></li>
+          <li><input type="checkbox" data-progress="catch" id="p01l08-f"><label for="p01l08-f">catch 复用 then 语义，没有第二套错误传播逻辑。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="evidence-gate">
+        <h2>关卡二：证据质量</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>证据</th><th>最低要求</th><th>不合格示例</th></tr></thead>
+            <tbody>
+              <tr><td>自有测试</td><td>状态、集成、边界 / 负向场景齐全</td><td>只有 happy path</td></tr>
+              <tr><td>官方测试</td><td>完整结果与按条款修复记录</td><td>只有一张全绿截图</td></tr>
+              <tr><td>机制图</td><td>状态机 + parent/reaction/child + resolution 决策树</td><td>复制教程图片</td></tr>
+              <tr><td>失败记录</td><td>至少一个错误假设、复现、根因和回归测试</td><td>“调了很久终于好了”</td></tr>
+              <tr><td>差异记录</td><td>说明教学实现不等于完整原生 Promise</td><td>宣称可直接替代生产实现</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="task">
+          <div class="task-head"><span class="task-number">2</span><h3>整理 P01 证据包</h3></div>
+          <p>把测试摘要、三张图、兼容性报告和失败复盘放在一个可审阅位置。不要提交依赖目录或大段终端噪声。</p>
+          <p class="deliverable"><strong>交付：</strong>一个任何人能在十分钟内审阅的 P01 证据包。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="explain-back">
+        <h2>关卡三：十分钟闭卷讲解</h2>
+        <p>不看代码、不看速查页，按顺序回答：</p>
+        <ol>
+          <li>Promise 保存了哪些状态与队列？每部分负责什么？</li>
+          <li>resolve 到 pending thenable 时，为什么“已锁定但仍 pending”？</li>
+          <li>为什么 <code>then</code> 必须返回 child，而不是 parent？</li>
+          <li>失败 handler 返回普通值后，为什么链条恢复为 fulfilled？</li>
+          <li>读取 <code>x.then</code> 时为什么必须只读一次并捕获异常？</li>
+          <li>Promises/A+ 全绿为何仍不代表完整原生 Promise？</li>
+        </ol>
+        <div class="task">
+          <div class="task-head"><span class="task-number">3</span><h3>录音或现场讲给 AI</h3></div>
+          <p>控制在十分钟内。AI 只针对因果缺口追问，不评价措辞是否像标准答案。</p>
+          <p class="deliverable"><strong>交付：</strong>六题回答；标出其中最不确定的一题。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="differences">
+        <h2>关卡四：写清教学实现的边界</h2>
+        <p>对照 ECMAScript 规范，至少记录下面五类差异：</p>
+        <ul>
+          <li>原生 Promise 使用内部 slots，不暴露可修改的 state / result。</li>
+          <li>原生 <code>then</code> 涉及 constructor species 与 Promise capability。</li>
+          <li>host 负责 Promise jobs 与未处理 rejection 跟踪。</li>
+          <li>静态组合方法、<code>finally</code>、迭代器关闭等不属于 A+ 核心。</li>
+          <li>生产实现还涉及性能、内存、调试栈、跨 realm 与宿主集成。</li>
+        </ul>
+        <div class="callout warning">
+          <span class="callout-title">不要直接把教学实现用于生产</span>
+          <p>它的价值是暴露机制与边界条件，不是替代引擎内置 Promise 或成熟 polyfill。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="extensions">
+        <h2>提高项：通过验收后再选</h2>
+        <div class="concept-grid">
+          <div class="card"><b>finally</b><p>验证不改变原 value / reason，并等待 cleanup thenable；不要简单写成两个相同 handler。</p></div>
+          <div class="card"><b>all</b><p>保持输入顺序、处理空 iterable、快速 rejection、thenable 吸收。</p></div>
+          <div class="card"><b>race</b><p>第一次 settled 获胜；空 iterable 保持 pending。</p></div>
+          <div class="card"><b>allSettled</b><p>等待全部完成，保留每项状态与对应 value / reason。</p></div>
+        </div>
+        <p>每次只选一个扩展，先写行为表再实现。扩展不是 P01 勾选的前置条件。</p>
+      </section>
+
+      <section class="lesson-section" id="retrospective">
+        <h2>复盘与间隔复习</h2>
+        <pre><code>我原来以为：
+实验或测试证明：
+真正的机制是：
+
+最难的不变量：
+最有价值的失败：
+仍不确定的边界：
+
+它如何帮助我调试前端或 Node：
+下一次我会如何更快验证：</code></pre>
+        <p>建议在 <strong>第 1、3、7 天</strong>各做一次五分钟闭卷检索：重画状态机、写出 then 传播矩阵、复述解析决策树。每次先回忆，再打开<a href="../reference/promise-field-guide.html">速查页</a>校正。</p>
+      </section>
+
+      <section class="lesson-section" id="submit">
+        <h2>提交验收时请提供</h2>
+        <ul>
+          <li>实现位置与运行测试的命令。</li>
+          <li>自有测试摘要和 Promises/A+ 报告。</li>
+          <li>三张机制图或等价说明。</li>
+          <li>一次失败假设的复盘。</li>
+          <li>六个闭卷问题的回答。</li>
+        </ul>
+        <div class="callout success">
+          <span class="callout-title">完成规则</span>
+          <p>生成教程不会自动勾选 P01。你提交上述证据并完成审阅后，才更新 <code>TASKS.md</code>，同时新增第一篇 learning record。</p>
+        </div>
+        <div class="source-card">
+          <p><strong>最终核对：</strong><a href="https://promisesaplus.com/">Promises/A+</a>、<a href="https://github.com/promises-aplus/promises-tests">官方测试套件</a>、<a href="https://tc39.es/ecma262/multipage/control-abstraction-objects.html#sec-promise-objects">ECMAScript Promise Objects</a>。</p>
+        </div>
+        <p>把证据包交给 AI 后，它应先审阅正确性与解释缺口，再逐项给反馈；除非你明确授权，不直接修改你的实现。</p>
+      </section>
+
+      <section class="lesson-section">
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="0007-p01-run-conformance-tests.html"><small>上一课</small>运行 A+ 兼容测试</a>
+          <a class="next" href="../TASKS.md"><small>完成后返回</small>学习任务总表</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel">
+        <h2>验收进度 <span data-progress-label>0 / 6</span></h2>
+        <div class="progress-track"><div class="progress-fill" data-progress-fill></div></div>
+        <p>这里记录核心行为；证据与讲解仍需单独审阅。</p>
+      </section>
+      <section class="side-panel">
+        <h2>随手查</h2>
+        <ul class="side-links">
+          <li><a href="../reference/promise-field-guide.html">Promise 机制速查</a></li>
+          <li><a href="0007-p01-run-conformance-tests.html#report">兼容性报告模板</a></li>
+          <li><a href="../TASKS.md">P01 总任务</a></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P01-L08 · Promise 项目验收与复盘</footer>
+</body>
+</html>

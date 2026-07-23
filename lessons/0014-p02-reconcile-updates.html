@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P02-L06 增量协调 DOM 更新</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P02-L06">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P02 · Lesson 6 / 9</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P02 · Reconciliation</p>
+        <h1>比较旧树与新描述，只提交必要变更</h1>
+        <p class="lede">把已提交 Fiber 作为 alternate 与新 element 逐位置比较，为新树标记 placement、update、deletion；然后让 commit 阶段消费这些标记。</p>
+        <div class="meta-strip"><span class="meta-item">90–120 分钟</span><span class="meta-item">难度：中高</span><span class="meta-item">产出：三类 effect 与节点复用证据</span></div>
+      </header>
+
+      <section class="lesson-section" id="identity">
+        <h2>先定义这个教学 diff 的身份规则</h2>
+        <p>本课先采用<strong>同一父节点下、同一位置、同一 type</strong>视为可复用。它故意不解决 keyed reorder；只有先把简化规则写明，才能判断每个结果是 bug 还是范围限制。</p>
+        <div class="table-wrap"><table><thead><tr><th>old fiber</th><th>new element</th><th>判断</th><th>effect</th></tr></thead><tbody>
+          <tr><td>存在</td><td>存在且 type 相同</td><td>复用 DOM，比较 props</td><td>UPDATE</td></tr>
+          <tr><td>不存在</td><td>存在</td><td>创建新 Fiber / DOM</td><td>PLACEMENT</td></tr>
+          <tr><td>存在</td><td>存在但 type 不同</td><td>旧的删除，新的创建</td><td>DELETION + PLACEMENT</td></tr>
+          <tr><td>存在</td><td>不存在</td><td>旧节点不再需要</td><td>DELETION</td></tr>
+        </tbody></table></div>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>手工推演四组 sibling 列表</h3></div><p>分别覆盖只改文本、末尾新增、末尾删除、同位置换 type。为每个位置写 old/new/effect，并预测 DOM 身份是否保留。</p><p class="deliverable"><strong>交付：</strong>四张逐位置 diff 表。</p></div>
+      </section>
+
+      <section class="lesson-section" id="alternate">
+        <h2>alternate 连接“上次已提交”与“本次候选”</h2>
+        <div class="flow-row" aria-label="双树关系"><div class="flow-node">current fiber</div><span class="arrow">↔</span><div class="flow-node">new fiber.alternate</div><span class="arrow">→</span><div class="flow-node">effectTag</div></div>
+        <p>不要原地修改 current tree 来充当候选树。current 要继续解释当前 DOM；new fiber 通过 alternate 读取旧 props 与旧 DOM，直到新树完成并提交。</p>
+        <p>删除项无法留在新 child 链中，因此需要单独的 deletion 集合，等待 commit 时处理。</p>
+      </section>
+
+      <section class="lesson-section" id="props">
+        <h2>DOM 更新要做差分，而不是只覆盖新值</h2>
+        <ol>
+          <li>移除旧而新没有的事件监听器。</li>
+          <li>移除旧而新没有的普通 property。</li>
+          <li>添加或替换发生变化的普通 property。</li>
+          <li>添加新事件监听器。</li>
+        </ol>
+        <p>顺序不是唯一可行答案，但必须确保旧 handler 不残留、被删除的 property 真正消失。用调用次数和 DOM 当前值验证，不只看视觉结果。</p>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>为 property diff 建立纯函数矩阵</h3></div><p>输入 old props 与 new props，输出待 remove / set 的 property 与 event 集合。至少覆盖新增、变化、删除、未变化四类。</p><p class="deliverable"><strong>交付：</strong>属性差分矩阵、事件替换测试和一次 DOM 集成测试。</p></div>
+      </section>
+
+      <section class="lesson-section" id="effects">
+        <h2>让 commit 成为 effect 的唯一执行者</h2>
+        <div class="concept-grid">
+          <div class="card"><b>PLACEMENT</b><p>把新宿主节点接到最近的宿主 parent。</p></div>
+          <div class="card"><b>UPDATE</b><p>复用已有 dom，应用旧 / 新 props 差分。</p></div>
+          <div class="card"><b>DELETION</b><p>从宿主 parent 移除旧子树对应的 DOM。</p></div>
+          <div class="card"><b>NO EFFECT</b><p>结构和 props 均无需宿主变化，仍可遍历后代。</p></div>
+        </div>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>用节点身份和操作计数证明增量更新</h3></div><p>保存更新前 DOM 节点引用；修改一个文本和一个 property 后，断言可复用节点身份不变，同时记录没有发生全容器清空。</p><p class="deliverable"><strong>交付：</strong>placement/update/deletion 集成测试与复用证明。</p></div>
+      </section>
+
+      <section class="lesson-section" id="limits">
+        <h2>用反例写清 index diff 的边界</h2>
+        <p>在列表头部插入一项，再交换两项顺序。观察无 key 的逐位置比较产生多少 update，以及局部状态未来可能跟错哪个位置。此时先记录问题，不在本课实现 keyed reconciliation。</p>
+        <div class="callout warning"><span class="callout-title">范围说明</span><p>“DOM 最终看起来对”不代表协调策略高效或状态身份正确。keyed reconciliation 是 P02 通过核心验收后的扩展项。</p></div>
+      </section>
+
+      <section class="lesson-section" id="hints">
+        <h2>逐级提示</h2>
+        <details><summary>提示 1：删除最后一个 child 没反应</summary><p>循环条件不能只依赖 new elements；只要 old fiber 仍存在，就还有删除工作要生成。</p></details>
+        <details><summary>提示 2：更新后事件触发两次</summary><p>确认旧 handler 在新 handler 注册前被移除，并且比较的是 alternate.props 与新 props。</p></details>
+        <details><summary>提示 3：第二次更新失去旧树</summary><p>commit 完成时，新 root 需要成为 current；下一次 render 的 root.alternate 再指向它。</p></details>
+      </section>
+
+      <section class="lesson-section"><h2>离开本课前</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="matrix" id="p02l06-a"><label for="p02l06-a">四类 old/new 组合都产生正确 effect。</label></li>
+        <li><input type="checkbox" data-progress="props" id="p02l06-b"><label for="p02l06-b">property 与事件的新增、变化、删除都有测试。</label></li>
+        <li><input type="checkbox" data-progress="effects" id="p02l06-c"><label for="p02l06-c">placement/update/deletion 只在 commit 执行。</label></li>
+        <li><input type="checkbox" data-progress="identity" id="p02l06-d"><label for="p02l06-d">我用引用身份与操作计数证明了 DOM 复用。</label></li>
+      </ul></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0013-p02-render-and-commit.html"><small>上一课</small>分离 render 与 commit</a><a class="next" href="0015-p02-function-components.html"><small>下一课</small>支持函数组件</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 4</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>先保证正确，再讨论最少移动。</p></section><section class="side-panel"><h2>页内目录</h2><ul class="side-links"><li><a href="#identity">身份规则</a></li><li><a href="#alternate">双树关系</a></li><li><a href="#props">props 差分</a></li><li><a href="#effects">effect 提交</a></li><li><a href="#limits">index diff 边界</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P02-L06 · 协调生成工作，提交执行工作</footer>
+</body>
+</html>

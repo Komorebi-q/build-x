@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P01-L04 让 then 返回新的 Promise</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P01-L04">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P01 · Lesson 4 / 8</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P01 · Chaining</p>
+        <h1>每次 then 都创建一条新因果链</h1>
+        <p class="lede">父 Promise 只决定选哪个 handler；handler 的返回或异常决定新的 child Promise。理解这一层，错误恢复和链式组合就不再神秘。</p>
+        <div class="meta-strip">
+          <span class="meta-item">40–55 分钟</span>
+          <span class="meta-item">难度：中等</span>
+          <span class="meta-item">产出：传播矩阵测试</span>
+        </div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>不要把父状态复制给 child</h2>
+        <div class="flow-row" aria-label="Promise 链式传播">
+          <div class="flow-node">parent 结果</div>
+          <span class="arrow">→</span>
+          <div class="flow-node">选择并执行 handler</div>
+          <span class="arrow">→</span>
+          <div class="flow-node">决定 child</div>
+        </div>
+        <p>如果父 Promise rejected，但 <code>onRejected</code> 成功返回一个普通值，child 应该 fulfilled。这就是 <code>catch</code> 能恢复链条的根本原因。</p>
+        <div class="callout warning">
+          <span class="callout-title">本课仍有一个受控缺口</span>
+          <p>先处理普通返回值、抛错和缺失 handler。若 handler 返回 thenable，暂时让对应测试保持 todo；第五课会实现完整解析程序。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="matrix">
+        <h2>传播矩阵就是测试规格</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>parent</th><th>对应 handler</th><th>handler 行为</th><th>child</th></tr></thead>
+            <tbody>
+              <tr><td>fulfilled(value)</td><td>函数</td><td>返回普通值 <code>x</code></td><td>fulfilled(x)</td></tr>
+              <tr><td>rejected(reason)</td><td>函数</td><td>返回普通值 <code>x</code></td><td>fulfilled(x)，表示恢复</td></tr>
+              <tr><td>任一</td><td>函数</td><td>抛出 <code>e</code></td><td>rejected(e)</td></tr>
+              <tr><td>fulfilled(value)</td><td>缺失或非函数</td><td>忽略</td><td>fulfilled(value)</td></tr>
+              <tr><td>rejected(reason)</td><td>缺失或非函数</td><td>忽略</td><td>rejected(reason)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>为五行矩阵各写一个最小链</h3></div>
+          <p>每个测试都保存 <code>const child = parent.then(...)</code>，先断言 child 与 parent 不是同一对象，再观察 child 的最终结果。</p>
+          <p class="deliverable"><strong>交付：</strong>五个传播测试，加一个“每次 then 返回不同 child”的身份测试。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="reaction-capability">
+        <h2>reaction 需要携带 child 的能力</h2>
+        <p>上一课的 reaction 只有两个 handler。现在需要再携带 child 的 resolve / reject 能力：</p>
+        <pre><code>调用 parent.then(onFulfilled, onRejected)
+  创建一个新的 child Promise 及其 resolve / reject 能力
+  创建 reaction：两个 handler + child capability
+  将 reaction 注册到 parent
+  立即把 child 返回给调用者
+
+未来处理 reaction
+  根据 parent 状态选择 handler
+  用 handler 的结果或异常决定 child</code></pre>
+        <p><code>then</code> 返回 child 的动作是同步的；child 何时 settled 取决于 reaction job。不要等 handler 执行后才返回 child。</p>
+        <div class="task">
+          <div class="task-head"><span class="task-number">2</span><h3>先完成 child 创建与身份测试</h3></div>
+          <ol>
+            <li>连续调用两次 <code>parent.then</code>。</li>
+            <li>证明两个返回值都不是 parent，且彼此也不相同。</li>
+            <li>证明在 scheduler flush 前，两个 child 都未被 handler 结果结算。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>一张 parent → reactions → children 的对象关系图。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="run-reaction">
+        <h2>把传播集中在一个 reaction runner</h2>
+        <p>以下伪代码用于检查分支完整性：</p>
+        <pre><code>runReaction(parentState, parentResult, reaction)
+  选择与 parentState 对应的 handler
+
+  如果 handler 不是函数
+    fulfilled 分支：把 parentResult 传给 child 的 resolve
+    rejected 分支：把 parentResult 传给 child 的 reject
+    结束
+
+  尝试以 parentResult 调用 handler
+    得到 x：把 x 交给 child 的 resolve（第五课增强）
+  如果 handler 抛出 e
+    以 e reject child</code></pre>
+        <div class="callout">
+          <span class="callout-title">两个容易混淆的方向</span>
+          <p>失败 handler <strong>返回</strong>值意味着恢复，所以走 child resolve；成功 handler <strong>抛出</strong>异常意味着新失败，所以走 child reject。</p>
+        </div>
+        <div class="task">
+          <div class="task-head"><span class="task-number">3</span><h3>让传播矩阵逐行变绿</h3></div>
+          <ol>
+            <li>先实现普通成功返回。</li>
+            <li>再实现失败 handler 的恢复。</li>
+            <li>加入 handler 抛错。</li>
+            <li>最后处理两个缺失 handler 的透明传播。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>完整传播矩阵、一次失败 handler 恢复的时间线，以及仍为 todo 的 thenable 测试。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="hints">
+        <h2>逐级提示</h2>
+        <details>
+          <summary>提示 1：then 返回了 parent 本身</summary>
+          <p>创建 child 的职责属于每次 <code>then</code> 调用，而不是 parent 构造阶段。每条 reaction 必须绑定自己的 child capability。</p>
+        </details>
+        <details>
+          <summary>提示 2：onRejected 返回值后 child 仍 rejected</summary>
+          <p>不要按“父状态”直接复制 child 状态。只要 handler 正常返回，返回值就进入 child 的 resolve 路径。</p>
+        </details>
+        <details>
+          <summary>提示 3：缺失 handler 导致 TypeError</summary>
+          <p>先检查可调用性，再决定是否执行。非函数 handler 应被忽略，并按父状态透明传递 value 或 reason。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section" id="retrieval">
+        <h2>从内存补全三条链</h2>
+        <p>不要运行，写出每个 <code>child</code> 的最终状态与结果：</p>
+        <pre><code>// A: 成功转换
+childA = fulfilled(2).then(x =&gt; x * 3)
+
+// B: 错误恢复
+childB = rejected("bad").then(undefined, reason =&gt; reason.length)
+
+// C: 新错误
+childC = fulfilled("ok").then(() =&gt; { throw "boom" })</code></pre>
+        <details>
+          <summary>核对答案</summary>
+          <p>A 是 <code>fulfilled(6)</code>；B 是 <code>fulfilled(3)</code>；C 是 <code>rejected("boom")</code>。规范允许任意 JavaScript 值作为 rejection reason。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="identity" id="p01l04-a"><label for="p01l04-a">我证明每次 then 返回独立 child。</label></li>
+          <li><input type="checkbox" data-progress="matrix" id="p01l04-b"><label for="p01l04-b">五行传播矩阵全部通过。</label></li>
+          <li><input type="checkbox" data-progress="diagram" id="p01l04-c"><label for="p01l04-c">我画出了 parent、reaction 与 child 的关系。</label></li>
+          <li><input type="checkbox" data-progress="todo" id="p01l04-d"><label for="p01l04-d">thenable 场景被明确保留为下一课 todo。</label></li>
+        </ul>
+        <div class="source-card">
+          <p><strong>本课主来源：</strong><a href="https://promisesaplus.com/#point-39">Promises/A+ §2.2.7</a>。重点核对返回值、异常与缺失 handler 的四个分支。</p>
+        </div>
+        <p>如果错误恢复仍反直觉，把你的传播矩阵发给 AI，让它用时间线追问每一步的“决定者是谁”。</p>
+      </section>
+
+      <section class="lesson-section">
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="0003-p01-register-and-drain-reactions.html"><small>上一课</small>注册与排空 reactions</a>
+          <a class="next" href="0005-p01-resolve-thenables-safely.html"><small>下一课</small>安全吸收 thenables</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel">
+        <h2>本课进度 <span data-progress-label>0 / 4</span></h2>
+        <div class="progress-track"><div class="progress-fill" data-progress-fill></div></div>
+        <p>传播矩阵是下一课解析程序的入口。</p>
+      </section>
+      <section class="side-panel">
+        <h2>随手查</h2>
+        <ul class="side-links">
+          <li><a href="../reference/promise-field-guide.html#then-law">then 四条规律</a></li>
+          <li><a href="https://promisesaplus.com/#point-39">A+ §2.2.7</a></li>
+          <li><a href="0003-p01-register-and-drain-reactions.html">Reaction queue</a></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P01-L04 · 让 then 返回新的 Promise</footer>
+</body>
+</html>

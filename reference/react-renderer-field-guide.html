@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P02 React 渲染器机制速查</title>
+  <link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P02 · Reference</span></div></header>
+  <div class="page-shell">
+    <main class="reference-page">
+      <header class="lesson-hero">
+        <p class="eyebrow">P02 · 随查文档</p>
+        <h1>React 渲染器机制速查</h1>
+        <p class="lede">把 element、Fiber、分片工作、render / commit、reconciliation、函数组件与 Hook 槽位压缩到一页。它描述 P02 的教学模型，不声称等同于现代 React 内部实现。</p>
+        <div class="meta-strip"><span class="meta-item">Didact 教学模型</span><span class="meta-item">React 官方概念对照</span><span class="meta-item">适合打印</span></div>
+      </header>
+
+      <section class="reference-section" id="objects">
+        <h2>一、三个对象不要混用</h2>
+        <div class="reference-grid">
+          <div class="term"><b>Element</b><p>对目标 UI 的普通数据描述：type、props、children。它不是 DOM，也不保存工作进度。</p></div>
+          <div class="term"><b>Fiber</b><p>一次协调工作的节点记录：树指针、dom、alternate、effect 与 hooks。</p></div>
+          <div class="term"><b>DOM Node</b><p>浏览器宿主对象。只有 commit 阶段应改变已挂载 DOM。</p></div>
+          <div class="term"><b>Component</b><p>以 props 计算 element 的函数边界；函数组件 Fiber 可以没有 dom。</p></div>
+        </div>
+      </section>
+
+      <section class="reference-section" id="pipeline">
+        <h2>二、数据流总图</h2>
+        <div class="flow-row" aria-label="渲染数据流"><div class="flow-node">JSX / createElement</div><span class="arrow">→</span><div class="flow-node">element tree</div><span class="arrow">→</span><div class="flow-node">WIP Fiber tree</div><span class="arrow">→</span><div class="flow-node">effect tags</div><span class="arrow">→</span><div class="flow-node">DOM commit</div></div>
+        <ul>
+          <li>JSX 在运行前被转换为函数调用；renderer 处理的是调用结果。</li>
+          <li>工作循环每次处理一个 Fiber，并保存 next unit。</li>
+          <li>候选树完成后，commit 才把 effect 应用到宿主 DOM。</li>
+        </ul>
+      </section>
+
+      <section class="reference-section" id="fiber">
+        <h2>三、Fiber 字段地图</h2>
+        <div class="table-wrap"><table><thead><tr><th>字段</th><th>用途</th><th>关键不变量</th></tr></thead><tbody>
+          <tr><td><code>type / props</code></td><td>描述本节点及其输入</td><td>函数 type 与字符串 type 走不同路径</td></tr>
+          <tr><td><code>dom</code></td><td>对应宿主节点或 root container</td><td>函数组件通常为空</td></tr>
+          <tr><td><code>parent / child / sibling</code></td><td>显式保存深度优先遍历关系</td><td>每个非 root Fiber 恰有一个 parent</td></tr>
+          <tr><td><code>alternate</code></td><td>连接上次已提交的同位置 Fiber</td><td>用于读取旧 props、旧 dom、旧 hooks</td></tr>
+          <tr><td><code>effectTag</code></td><td>记录 commit 要执行的宿主工作</td><td>render 只标记，commit 执行</td></tr>
+          <tr><td><code>hooks</code></td><td>按调用顺序保存函数组件状态</td><td>每次 render 的顺序必须稳定</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="reference-section" id="traversal">
+        <h2>四、下一个工作单元</h2>
+        <ol class="decision-tree">
+          <li>有 child：向下。</li>
+          <li>无 child、有 sibling：向右。</li>
+          <li>两者都无：沿 parent 向上，寻找第一个有 sibling 的祖先。</li>
+          <li>回到 root 仍没有：本轮候选树完成。</li>
+        </ol>
+      </section>
+
+      <section class="reference-section" id="phases">
+        <h2>五、render 与 commit</h2>
+        <div class="table-wrap"><table><thead><tr><th>Render</th><th>Commit</th></tr></thead><tbody>
+          <tr><td>执行函数组件</td><td>插入新宿主节点</td></tr>
+          <tr><td>创建候选 Fibers</td><td>应用 property / event 差分</td></tr>
+          <tr><td>比较 old fiber 与 new element</td><td>删除旧宿主子树</td></tr>
+          <tr><td>标记 effect，可在 unit 边界暂停</td><td>本项目中连续完成，然后提升 current root</td></tr>
+        </tbody></table></div>
+        <div class="callout warning"><span class="callout-title">调试口诀</span><p>render 只回答“要做什么”；commit 才回答“现在对 DOM 做”。若暂停后页面出现半成品，副作用边界放错了。</p></div>
+      </section>
+
+      <section class="reference-section" id="reconciliation">
+        <h2>六、简化 reconciliation 决策表</h2>
+        <div class="table-wrap"><table><thead><tr><th>旧节点</th><th>新描述</th><th>结果</th></tr></thead><tbody>
+          <tr><td>有</td><td>同位置、同 type</td><td>复用 dom，UPDATE</td></tr>
+          <tr><td>无</td><td>有</td><td>新建，PLACEMENT</td></tr>
+          <tr><td>有</td><td>同位置、不同 type</td><td>旧 DELETION + 新 PLACEMENT</td></tr>
+          <tr><td>有</td><td>无</td><td>DELETION</td></tr>
+        </tbody></table></div>
+        <p>这是 index-based 教学策略，不解决 key、移动最优化与完整状态身份语义。</p>
+      </section>
+
+      <section class="reference-section" id="hooks">
+        <h2>七、<code>useState</code> 槽位与队列</h2>
+        <pre><code>每次执行一个函数组件：
+  currentHookIndex = 0
+  newFiber.hooks = []
+
+每次 useState：
+  从 alternate.hooks[currentHookIndex] 找旧 hook
+  以旧 state 为起点，按序折叠 pending actions
+  保存 new hook
+  currentHookIndex += 1
+
+setter：
+  向所属 hook queue 追加 action
+  安排从 current root 开始的新一轮工作</code></pre>
+        <ul>
+          <li>Hook 身份 = 组件 Fiber 身份 + 稳定调用位置。</li>
+          <li>initial state 只在没有旧 hook 时提供起点。</li>
+          <li>已消费 action 不能在下一轮重复应用。</li>
+          <li>条件调用会使后续槽位错位，因此 hooks 必须在顶层稳定调用。</li>
+        </ul>
+      </section>
+
+      <section class="reference-section" id="debug">
+        <h2>八、现象到不变量的排查表</h2>
+        <div class="table-wrap"><table><thead><tr><th>现象</th><th>优先检查</th></tr></thead><tbody>
+          <tr><td>暂停时页面出现半棵树</td><td>append / update 是否泄漏到 render</td></tr>
+          <tr><td>更新后节点全部换身份</td><td>alternate 与 type 匹配是否正确</td></tr>
+          <tr><td>删除尾节点无效</td><td>协调循环是否在 new elements 用尽后仍处理 old fiber</td></tr>
+          <tr><td>事件触发多次</td><td>旧 handler 是否先移除</td></tr>
+          <tr><td>函数组件内容无法删除</td><td>commit 是否跨无 dom Fiber 查找宿主节点</td></tr>
+          <tr><td>第二个 state 被第一个覆盖</td><td>hookIndex 重置、递增与 old hook 查找</td></tr>
+          <tr><td>连续更新少执行一次</td><td>action queue 是否基于前一计算结果顺序折叠</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="reference-section" id="sources">
+        <h2>九、对照来源</h2>
+        <div class="source-card"><p><strong>课程原型：</strong><a href="https://pomb.us/build-your-own-react/">Build your own React</a> 与本地 <a href="../sources/didact/didact.js">Didact 快照</a>。<strong>官方概念：</strong><a href="https://react.dev/learn/render-and-commit">Render and Commit</a>、<a href="https://react.dev/learn/queueing-a-series-of-state-updates">Queueing State Updates</a>、<a href="https://react.dev/reference/rules/rules-of-hooks">Rules of Hooks</a>。</p></div>
+      </section>
+
+      <section class="reference-section"><nav class="lesson-nav" aria-label="课程导航"><a href="../lessons/0009-p02-observe-rendering-contract.html"><small>返回课程</small>P02 第一课</a><a class="next" href="../TASKS.md"><small>返回总表</small>学习任务总表</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>使用方式</h2><p>先凭记忆画图或判断，再用此页校正。若行为与表格冲突，回到对应短课设计最小实验。</p></section><section class="side-panel"><h2>页内目录</h2><ul class="side-links"><li><a href="#objects">对象</a></li><li><a href="#pipeline">数据流</a></li><li><a href="#fiber">Fiber 字段</a></li><li><a href="#traversal">遍历</a></li><li><a href="#phases">两阶段</a></li><li><a href="#reconciliation">协调</a></li><li><a href="#hooks">Hooks</a></li><li><a href="#debug">排查表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P02 React 渲染器机制速查 · 教学模型与现代 React 概念边界分开理解</footer>
+</body>
+</html>

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P02-L04 分片执行 render 工作</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P02-L04">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P02 · Lesson 4 / 9</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P02 · Scheduling</p>
+        <h1>在节点边界暂停，而不是猜一个延时</h1>
+        <p class="lede">把 Fiber 遍历放进可控工作循环：每完成一个工作单元就检查预算，必要时保存 next 指针并把控制权交还宿主。</p>
+        <div class="meta-strip"><span class="meta-item">50–75 分钟</span><span class="meta-item">难度：中等</span><span class="meta-item">产出：确定性分片测试</span></div>
+      </header>
+
+      <section class="lesson-section" id="model">
+        <h2>先分清“安排一轮”与“执行一轮”</h2>
+        <div class="flow-row" aria-label="调度循环"><div class="flow-node">schedule callback</div><span class="arrow">→</span><div class="flow-node">处理若干 units</div><span class="arrow">→</span><div class="flow-node">shouldYield?</div><span class="arrow">→</span><div class="flow-node">保存 next / 再安排</div></div>
+        <p>调度器不需要理解 Fiber。它只提供“稍后再运行”和“本轮是否该让出”的信号；renderer 决定每个 unit 是什么，并持有剩余工作。</p>
+        <div class="callout warning"><span class="callout-title">教学近似</span><p>原始 Didact 教程使用 <code>requestIdleCallback</code> 展示空闲切片。它不是跨环境的稳定基础，也不等于现代 React Scheduler。为便于测试，先设计可注入的调度边界。</p></div>
+      </section>
+
+      <section class="lesson-section" id="contract">
+        <h2>用契约定义 scheduler，而不是绑定某个 API</h2>
+        <pre><code>schedule(workLoop)
+  约定：不会立刻递归调用 workLoop
+
+workLoop(budget)
+  while 仍有 nextUnit 且 budget 允许：
+    nextUnit = performUnit(nextUnit)
+  若仍有工作：安排下一轮
+  若候选树完成：交给 commit 阶段</code></pre>
+        <p>这段是控制流伪代码，不是实现答案。你需要自己选择 scheduler 适配器，并让测试不依赖真实时间。</p>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>做一个手动预算测试替身</h3></div><p>测试可以指定“一轮最多允许处理 N 个 unit”，并显式运行下一轮。它至少要暴露：已安排回调数量、每轮访问节点、剩余 nextUnit。</p><p class="deliverable"><strong>交付：</strong>无需 sleep 的 scheduler 契约测试。</p></div>
+      </section>
+
+      <section class="lesson-section" id="cases">
+        <h2>四个必须证明的分片场景</h2>
+        <div class="table-wrap"><table><thead><tr><th>场景</th><th>第一轮后</th><th>最终</th></tr></thead><tbody>
+          <tr><td>预算足够</td><td>nextUnit 为空，候选树完整</td><td>只需一轮</td></tr>
+          <tr><td>预算为一个 unit</td><td>恰处理一个节点，nextUnit 指向后继</td><td>多轮访问序列仍正确</td></tr>
+          <tr><td>深层回溯处让出</td><td>恢复点不丢失</td><td>叔叔节点仍会被处理</td></tr>
+          <tr><td>空队列再次调度</td><td>不产生无意义工作</td><td>不会重复 commit</td></tr>
+        </tbody></table></div>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>比较单轮与多轮访问轨迹</h3></div><p>同一棵树分别用无限预算、每轮一个 unit、交替预算运行。最终访问序列和生成的候选树应等价。</p><p class="deliverable"><strong>交付：</strong>三种预算下的差分测试和一张轮次记录表。</p></div>
+      </section>
+
+      <section class="lesson-section" id="responsiveness">
+        <h2>证明“让出”真的有意义</h2>
+        <p>构造一个足够大的纯 element 树，并安排一个独立的高优先级观察任务。比较整树同步递归与分片版本：不要只比较总耗时，还要记录观察任务最迟多久获得执行机会。</p>
+        <p>本实验关注响应性，不预设分片版本总耗时更短。切片和重新调度本身有成本。</p>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>记录吞吐与响应性的取舍</h3></div><p>至少记录总完成时间、轮次数、单轮最大工作量、观察任务等待时间。说明你的实验噪声来源。</p><p class="deliverable"><strong>交付：</strong>一张测量表和三句结论，不以单次结果下定论。</p></div>
+      </section>
+
+      <section class="lesson-section" id="hints">
+        <h2>逐级提示</h2>
+        <details><summary>提示 1：工作为什么重复了</summary><p>检查 nextUnit 是在处理前还是处理后更新，以及让出时是否保留了唯一的恢复点。</p></details>
+        <details><summary>提示 2：测试偶尔失败</summary><p>把真实时间、浏览器空闲度和 timer 从单元测试移走；单元测试只控制预算和回调队列。</p></details>
+        <details><summary>提示 3：循环永不结束</summary><p>分别断言“performUnit 必须推进 next”与“无 next 时不得继续 schedule”。不要只在整合测试里找原因。</p></details>
+      </section>
+
+      <section class="lesson-section"><h2>离开本课前</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="contract" id="p02l04-a"><label for="p02l04-a">scheduler 与 renderer 的职责边界已有测试。</label></li>
+        <li><input type="checkbox" data-progress="slices" id="p02l04-b"><label for="p02l04-b">不同预算下的最终访问序列一致。</label></li>
+        <li><input type="checkbox" data-progress="resume" id="p02l04-c"><label for="p02l04-c">在深层回溯点暂停后仍能正确恢复。</label></li>
+        <li><input type="checkbox" data-progress="measure" id="p02l04-d"><label for="p02l04-d">我分别测量了吞吐与响应性。</label></li>
+      </ul></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0011-p02-fiber-work-units.html"><small>上一课</small>Fiber 工作单元</a><a class="next" href="0013-p02-render-and-commit.html"><small>下一课</small>分离 render 与 commit</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 4</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>不依赖真实时间，测试才可重复。</p></section><section class="side-panel"><h2>页内目录</h2><ul class="side-links"><li><a href="#model">调度模型</a></li><li><a href="#contract">scheduler 契约</a></li><li><a href="#cases">分片场景</a></li><li><a href="#responsiveness">测量取舍</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P02-L04 · 分片是控制权设计，不是固定延时</footer>
+</body>
+</html>

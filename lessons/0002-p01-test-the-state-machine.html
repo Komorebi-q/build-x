@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P01-L02 用测试锁定 Promise 状态机</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P01-L02">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P01 · Lesson 2 / 8</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P01 · TDD 状态机</p>
+        <h1>先写不变量，再写状态</h1>
+        <p class="lede">这一课只完成最小构造与一次性迁移。暂时不做完整 <code>then</code>，也不吸收 thenable；让每个测试只推动一个设计决定。</p>
+        <div class="meta-strip">
+          <span class="meta-item">35–50 分钟</span>
+          <span class="meta-item">难度：基础</span>
+          <span class="meta-item">产出：状态机测试组</span>
+        </div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>本课边界</h2>
+        <div class="concept-grid">
+          <div class="card"><b>现在实现</b><p>executor 立即调用、初始状态、第一次 resolve / reject 获胜、executor 异常转 rejection。</p></div>
+          <div class="card"><b>刻意推迟</b><p>handler 队列、链式 <code>then</code>、thenable 吸收、微任务细节、静态组合方法。</p></div>
+        </div>
+        <div class="callout warning">
+          <span class="callout-title">阶段性脚手架不是最终语义</span>
+          <p>本课只用普通值测试 resolve。原生构造器的 resolve 会吸收 thenable；第五课会把“临时 fulfill”重构为完整 resolution procedure。请在代码中留下明确 TODO，避免误把阶段实现当完成品。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="test-map">
+        <h2>从行为表生成测试</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>场景</th><th>刺激</th><th>必须观察到</th><th>防止的错误</th></tr></thead>
+            <tbody>
+              <tr><td>构造</td><td>传入 executor</td><td>立即且仅调用一次；收到两个函数</td><td>把 executor 错误地排到以后</td></tr>
+              <tr><td>初始</td><td>executor 不结算</td><td>保持 pending</td><td>默认 fulfilled 为 <code>undefined</code></td></tr>
+              <tr><td>成功</td><td>resolve 普通值</td><td>fulfilled，保存同一值</td><td>丢失 value 或多次变化</td></tr>
+              <tr><td>失败</td><td>reject reason</td><td>rejected，保存同一 reason</td><td>强制 reason 必须是 Error</td></tr>
+              <tr><td>竞争</td><td>resolve 后 reject</td><td>第一次调用获胜</td><td>两个 closure 各自维护独立开关</td></tr>
+              <tr><td>异常</td><td>executor 直接 throw</td><td>以该异常 rejected</td><td>异常逃出构造器</td></tr>
+              <tr><td>迟到异常</td><td>resolve 后 throw</td><td>保持首次结果</td><td>catch 覆盖已锁定结果</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>把七行行为表改写成测试名</h3></div>
+          <p>使用“给定—当—那么”思路，但测试名应描述外部行为，不描述你的字段名。例如，避免写“called 标志变为 true”。</p>
+          <p class="deliverable"><strong>交付：</strong>七个测试名；每个名字都能在不看实现时读懂。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="observable-design">
+        <h2>决定如何观察状态</h2>
+        <p>在 <code>then</code> 尚未完成时，测试状态机有两种合理方案：</p>
+        <div class="concept-grid">
+          <div class="card"><b>测试专用快照</b><p>通过只读调试接口读取 state / result。反馈直接，但必须防止它变成公共可写 API。</p></div>
+          <div class="card"><b>暂时暴露内部状态</b><p>更接近原始教程，启动快；后续要主动收回，否则用户可以破坏不变量。</p></div>
+        </div>
+        <div class="task">
+          <div class="task-head"><span class="task-number">2</span><h3>写一条设计决定</h3></div>
+          <p>选择一种观察策略，写下“为什么适合学习阶段”和“何时删除或收紧”。不要因为测试方便就永久扩大公共 API。</p>
+          <p class="deliverable"><strong>交付：</strong>三句话的测试可观察性决定。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="implementation-loop">
+        <h2>一次只让一个测试变绿</h2>
+        <p>按下面的设计骨架推进。它是伪代码，刻意不提供 JavaScript 最终实现：</p>
+        <pre><code>构造(executor)
+  初始化：状态为 pending，结果为空
+  创建一个“是否已决定”的共享闩锁
+
+  resolveOnce(value)
+    如果闩锁已关闭：忽略
+    否则关闭闩锁，暂时以普通值完成
+
+  rejectOnce(reason)
+    如果闩锁已关闭：忽略
+    否则关闭闩锁，以 reason 拒绝
+
+  尝试立即调用 executor(resolveOnce, rejectOnce)
+  如果抛错：交给 rejectOnce</code></pre>
+        <p>关键不是字段怎么命名，而是 <strong>resolve 与 reject 必须共享同一个竞争闩锁</strong>，executor 的异常也必须走相同的一次性入口。</p>
+
+        <div class="task">
+          <div class="task-head"><span class="task-number">3</span><h3>执行 Red → Green → Refactor</h3></div>
+          <ol>
+            <li>选择行为表第一行，先看到测试因正确原因失败。</li>
+            <li>只写让这一行变绿的最少代码。</li>
+            <li>每次新增测试后运行整个小组，防止旧不变量回归。</li>
+            <li>七行全部变绿后，再消除重复；不要提前抽象。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>七个通过的测试、至少一个红灯截图或日志，以及一次小重构说明。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="hints">
+        <h2>卡住时按层取提示</h2>
+        <details>
+          <summary>提示 1：第一次调用为何没有被锁住？</summary>
+          <p>检查 resolve 与 reject 是否引用同一个词法作用域中的布尔状态。若各自有一个标志，它们无法互斥。</p>
+        </details>
+        <details>
+          <summary>提示 2：executor 抛错为何逃出去了？</summary>
+          <p>异常边界应该包住“调用 executor”这个动作，而不是包住 executor 的创建。捕获后不要直接改状态，要复用一次性 reject 入口。</p>
+        </details>
+        <details>
+          <summary>提示 3：resolve 后 throw 为何变成 rejected？</summary>
+          <p>这说明 catch 绕过了共享闩锁。让捕获到的异常也调用 rejectOnce，已关闭时自然被忽略。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section" id="self-check">
+        <h2>闭卷自查</h2>
+        <ol>
+          <li>为什么只检查 <code>state !== pending</code> 也能实现一次性迁移？它与独立闩锁在 thenable 吸收阶段可能有什么差别？</li>
+          <li>为什么 rejection reason 不应该强制转成 <code>Error</code>？</li>
+          <li>executor 先 resolve 再 throw 时，哪个规则决定最终结果？</li>
+          <li>本课的 resolve 为什么仍是“暂时不完整”的？</li>
+        </ol>
+        <details>
+          <summary>核对思路</summary>
+          <p>前三题分别考察状态不变量、规范允许任意 reason、第一次决定获胜。第四题的关键是：完整 resolve 还需递归处理 Promise / thenable，并区分“锁定”与“已 fulfilled”。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="names" id="p01l02-a"><label for="p01l02-a">我从行为表写出了七个测试名。</label></li>
+          <li><input type="checkbox" data-progress="decision" id="p01l02-b"><label for="p01l02-b">我记录了测试如何观察内部状态。</label></li>
+          <li><input type="checkbox" data-progress="tests" id="p01l02-c"><label for="p01l02-c">七个状态机测试都通过，并保留了红灯证据。</label></li>
+          <li><input type="checkbox" data-progress="explain" id="p01l02-d"><label for="p01l02-d">我能解释共享闩锁与异常路径。</label></li>
+        </ul>
+        <div class="source-card">
+          <p><strong>本课主来源：</strong><a href="https://promisesaplus.com/#promise-states">Promises/A+ §2.1 Promise States</a>；动手顺序参考 <a href="https://www.mauriciopoppe.com/notes/computer-science/computation/promises/">原始 TDD 教程</a>。注意 A+ 本身不规定构造器 API。</p>
+        </div>
+        <p>需要审阅时，提交测试名、失败日志和你的设计决定。AI 应先指出缺失的不变量，再给下一层提示。</p>
+      </section>
+
+      <section class="lesson-section">
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="0001-p01-observe-promise-behavior.html"><small>上一课</small>观察 Promise 行为</a>
+          <a class="next" href="0003-p01-register-and-drain-reactions.html"><small>下一课</small>注册与排空 reactions</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel">
+        <h2>本课进度 <span data-progress-label>0 / 4</span></h2>
+        <div class="progress-track"><div class="progress-fill" data-progress-fill></div></div>
+        <p>只有保留测试证据才算完成。</p>
+      </section>
+      <section class="side-panel">
+        <h2>随手查</h2>
+        <ul class="side-links">
+          <li><a href="../reference/promise-field-guide.html#states">三态模型</a></li>
+          <li><a href="https://promisesaplus.com/#promise-states">A+ 状态条款</a></li>
+          <li><a href="../TASKS.md">P01 验收目标</a></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P01-L02 · 用测试锁定 Promise 状态机</footer>
+</body>
+</html>

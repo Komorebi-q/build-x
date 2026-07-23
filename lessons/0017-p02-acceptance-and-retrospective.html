@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P02-L09 React 渲染器项目验收与复盘</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P02-L09">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P02 · Lesson 9 / 9</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P02 · Acceptance</p>
+        <h1>证明你理解渲染流水线，而不只是做出计数器</h1>
+        <p class="lede">最终验收关注不变量、证据与解释能力。P02 仍保持未完成，直到你提交自己的实现、测试、图解和边界说明并通过审阅。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">类型：项目验收</span><span class="meta-item">产出：P02 证据包</span></div>
+      </header>
+
+      <section class="lesson-section" id="behavior">
+        <h2>关卡一：核心行为</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="elements" id="p02l09-a"><label for="p02l09-a">element 工厂正确处理宿主元素、文本与 children 的已声明范围。</label></li>
+          <li><input type="checkbox" data-progress="fiber" id="p02l09-b"><label for="p02l09-b">Fiber 工作单元按 child / sibling / parent 遍历，能够暂停和恢复。</label></li>
+          <li><input type="checkbox" data-progress="commit" id="p02l09-c"><label for="p02l09-c">render 不改变已挂载 DOM，完整候选树才触发一次 commit。</label></li>
+          <li><input type="checkbox" data-progress="reconcile" id="p02l09-d"><label for="p02l09-d">placement / update / deletion 正确，复用节点身份且不残留旧事件。</label></li>
+          <li><input type="checkbox" data-progress="components" id="p02l09-e"><label for="p02l09-e">嵌套函数组件无需包装 DOM，插入与删除可跨透明 Fiber。</label></li>
+          <li><input type="checkbox" data-progress="hooks" id="p02l09-f"><label for="p02l09-f">多个 useState 独立、更新队列按序消费，并能解释稳定调用顺序。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="tests">
+        <h2>关卡二：测试必须证明过程</h2>
+        <div class="table-wrap"><table><thead><tr><th>层级</th><th>最低证据</th><th>避免的假阳性</th></tr></thead><tbody>
+          <tr><td>纯数据单元测试</td><td>element 形状、遍历顺序、props diff、hook queue</td><td>DOM 最终正确但内部规则错误</td></tr>
+          <tr><td>宿主契约测试</td><td>create / append / remove / event 操作日志</td><td>重复操作被浏览器结果掩盖</td></tr>
+          <tr><td>集成测试</td><td>首次挂载、更新、删除、函数组件、双 state</td><td>模块单独正确但连接失败</td></tr>
+          <tr><td>负向 / 边界测试</td><td>中途暂停不泄漏、删除尾项、事件替换、条件 Hook 演示</td><td>只覆盖 happy path</td></tr>
+        </tbody></table></div>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>整理可重复执行的证据包</h3></div><ol><li>写出运行命令与环境版本。</li><li>保存测试结果摘要，而不是只截一张绿色终端图。</li><li>保存一次更新的 Fiber / effect / DOM 操作轨迹。</li><li>记录一个失败测试如何定位到具体不变量。</li></ol><p class="deliverable"><strong>交付：</strong>测试报告、轨迹和排错记录。</p></div>
+      </section>
+
+      <section class="lesson-section" id="explain">
+        <h2>关卡三：十分钟闭卷讲解</h2>
+        <ol>
+          <li>从 JSX 输入开始，走到首次 DOM commit。</li>
+          <li>解释 Fiber 为什么能在节点边界暂停，递归版本为什么不便控制。</li>
+          <li>画 current tree、work-in-progress tree 与 alternate。</li>
+          <li>解释更新、删除与 DOM 身份复用。</li>
+          <li>解释函数组件为什么没有 dom 仍需 Fiber。</li>
+          <li>用两个 useState 说明 Hook 槽位和 action queue。</li>
+        </ol>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>录音、录屏或现场讲给 AI</h3></div><p>不看教程完成讲解。卡住时记录具体缺口，回到相应短课补图或补实验，再重讲一次。</p><p class="deliverable"><strong>交付：</strong>讲解记录和第二次改进点。</p></div>
+      </section>
+
+      <section class="lesson-section" id="boundary">
+        <h2>关卡四：明确教学实现与 React 的边界</h2>
+        <p>至少写清以下差异，不需要靠模糊的“功能比较少”概括：</p>
+        <ul>
+          <li>调度器只是演示可让出工作，不复刻 React 的优先级与并发机制。</li>
+          <li>逐位置 reconciliation 不提供生产级 keyed diff、移动优化和状态身份语义。</li>
+          <li>宿主 DOM property / event 处理只覆盖声明的最小子集。</li>
+          <li><code>useState</code> 只演示槽位与队列，不覆盖 batching、eager bailout 或完整 Hooks 系统。</li>
+          <li>没有 effect、错误边界、hydration、server components、开发模式诊断等能力。</li>
+        </ul>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>做一次差分实验</h3></div><p>选列表头插入、连续状态更新或 render 纯度中的一个场景，同时运行你的 renderer 与 React。记录行为差异，并解释是 bug、已声明限制还是实现策略差异。</p><p class="deliverable"><strong>交付：</strong>一页差分实验报告。</p></div>
+      </section>
+
+      <section class="lesson-section" id="extensions">
+        <h2>提高项：核心验收后一次只选一个</h2>
+        <div class="concept-grid">
+          <div class="card"><b>keyed reconciliation</b><p>定义 type + key 身份，测量列表插入与移动。</p></div>
+          <div class="card"><b>批量更新</b><p>同一事件中的多次 setter 合并为更少 render。</p></div>
+          <div class="card"><b>effect 与 cleanup</b><p>建立 commit 后副作用与下次清理时机。</p></div>
+          <div class="card"><b>错误隔离</b><p>研究 render 抛错时如何保留 current UI。</p></div>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="retrospective">
+        <h2>复盘问题</h2>
+        <ol>
+          <li>哪个 bug 最能暴露你对 render / commit 边界的误解？</li>
+          <li>哪条不变量最值得在 P03 模块图项目继续复用？</li>
+          <li>你的测试中，哪些验证结果，哪些真正验证过程？</li>
+          <li>若重做一次，你会先稳定哪三个纯函数边界？</li>
+          <li>两周后闭卷重画时，你最可能忘记哪条指针或队列关系？</li>
+        </ol>
+      </section>
+
+      <section class="lesson-section" id="submit">
+        <h2>提交验收时请提供</h2>
+        <ul>
+          <li>实现仓库路径与运行命令；</li>
+          <li>测试摘要和一个负向测试说明；</li>
+          <li>render / commit 图、Fiber 指针图、Hook 槽位表；</li>
+          <li>一次 DOM 更新操作轨迹；</li>
+          <li>教学边界与差分实验报告；</li>
+          <li>你希望我重点审阅的 1–3 个设计决策。</li>
+        </ul>
+        <p>收到证据后，我会先按可观察行为和不变量审阅，再按你的需要逐级提供提示。通过前不会修改 P02 的完成复选框。</p>
+      </section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0016-p02-usestate-hook-queues.html"><small>上一课</small>实现多个 useState</a><a class="next" href="../TASKS.md"><small>返回总表</small>选择下一步</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>验收进度 <span data-progress-label>0 / 6</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>这些勾选是自查，不会自动把 P02 标记完成。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/react-renderer-field-guide.html">渲染器机制速查</a></li><li><a href="../sources/didact/didact.js">本地 Didact 对照源码</a></li><li><a href="0009-p02-observe-rendering-contract.html">回到第一课</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P02-L09 · 用证据完成项目，而不是用阅读进度代替实现</footer>
+</body>
+</html>

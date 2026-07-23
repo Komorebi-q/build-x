@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P03-L01 先观察模块打包契约</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P03-L01">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P03 · Lesson 1 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P03 · Bundler Contract</p>
+        <h1>先把 bundle 当成可验证的翻译结果</h1>
+        <p class="lede">这一课不实现打包器。你会用一个三文件程序观察 ESM 输入、依赖图、中间模块表和可执行产物，先写下 P03 必须守住的契约。</p>
+        <div class="meta-strip"><span class="meta-item">45–60 分钟</span><span class="meta-item">难度：入门诊断</span><span class="meta-item">产出：预测表、模块图、范围声明</span></div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>完成后你应该能够</h2>
+        <div class="objectives">
+          <div class="objective"><b>说清输入与输出</b><span>入口文件只是起点，输出是携带模块表与加载逻辑的可执行程序。</span></div>
+          <div class="objective"><b>区分三类名字</b><span>文件路径、模块 id 与源代码里的 import specifier 不是同一个东西。</span></div>
+          <div class="objective"><b>画出有向图</b><span>模块是节点，静态 import 是带来源语境的有向边。</span></div>
+          <div class="objective"><b>定义证据</b><span>不仅比较最终日志，还检查资产、边、模块表和执行次数。</span></div>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="experiment">
+        <h2>实验：一个三文件程序去哪了</h2>
+        <p>Minipack 自带的示例形成一条链：入口导入消息，消息再导入名字。先不要读打包器实现，只读 <a href="../sources/minipack/example/entry.js">entry.js</a>、<a href="../sources/minipack/example/message.js">message.js</a> 与 <a href="../sources/minipack/example/name.js">name.js</a>。</p>
+        <div class="flow-row" aria-label="示例模块图">
+          <div class="flow-node">entry.js</div><span class="arrow">→</span>
+          <div class="flow-node">message.js</div><span class="arrow">→</span>
+          <div class="flow-node">name.js</div>
+        </div>
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>先预测，再运行参考项目</h3></div>
+          <ol>
+            <li>预测三个模块被发现、转换和执行的顺序。</li>
+            <li>预测 bundle 内至少需要保存哪些数据，才能让入口找到下一层依赖。</li>
+            <li>先读 <code>package.json</code> 并记录旧依赖。若要运行，把仓库复制到工作区外的一次性目录，再按 README 安装；把打包器标准输出保存为临时 bundle，不在固定快照中生成依赖或 lockfile。若旧依赖与当前 Node 不兼容，保留错误证据，不要升级快照。</li>
+            <li>先在生成文本中找出模块包装函数、specifier → id 映射和入口启动位置；再把临时 bundle 作为独立程序执行，分开记录 build output 与最终业务日志。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>“预测 / 观察 / 修正解释”三列表；每个结论附一段输出证据。</p>
+        </div>
+        <div class="callout warning"><span class="callout-title">参考仓库不是答案模板</span><p>本地快照固定在 Minipack 提交 <code>a4d91ea1087fc23d96f63e8c893fdf16137ee4d4</code>。它明确省略循环依赖、模块缓存和单次解析去重；你要观察其模型，也要找出这些限制造成的可见行为。</p></div>
+      </section>
+
+      <section class="lesson-section" id="pipeline">
+        <h2>先用四段流水线组织问题</h2>
+        <div class="flow-row" aria-label="最小打包流水线">
+          <div class="flow-node">Parse / Transform</div><span class="arrow">→</span>
+          <div class="flow-node">Resolve / Graph</div><span class="arrow">→</span>
+          <div class="flow-node">Serialize</div><span class="arrow">→</span>
+          <div class="flow-node">Runtime</div>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>阶段</th><th>输入</th><th>输出</th><th>先问的不变量</th></tr></thead><tbody>
+          <tr><td>解析与转换</td><td>一个文件的源码</td><td>AST、依赖 specifiers、可执行模块代码</td><td>只把真实静态依赖当成边了吗？</td></tr>
+          <tr><td>解析与建图</td><td>入口与父文件语境</td><td>资产节点、规范路径、边映射</td><td>同一文件的身份是否稳定？</td></tr>
+          <tr><td>序列化</td><td>完整模块图</td><td>模块表与启动代码</td><td>模块作用域和字符串边界是否保留？</td></tr>
+          <tr><td>运行时</td><td>模块 id</td><td>模块 exports 与副作用</td><td>每次 require 是否查当前模块自己的映射？</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="lesson-section" id="diagnostic">
+        <h2>前置诊断：闭卷回答</h2>
+        <ol>
+          <li>为什么用正则搜索 <code>import</code> 不能可靠地代替 JavaScript parser？至少给出两个反例类别。</li>
+          <li><code>./name.js</code> 是完整文件身份，还是相对某个 importer 才有意义的 specifier？</li>
+          <li>树和有向图有什么不同？“两个模块都依赖同一文件”会形成什么形状？</li>
+          <li>为什么把每个模块包进函数可以避免顶层变量互相污染？</li>
+          <li>“图中只有一个共享节点”能否直接证明“运行时只执行共享模块一次”？为什么？</li>
+          <li>ESM 的 import binding 与从普通对象解构一个值有什么潜在语义差异？</li>
+        </ol>
+        <details><summary>第 1 题提示 1</summary><p>想想注释、字符串、不同空白形式，以及重导出语法。词面相似不等于 AST 节点类型相同。</p></details>
+        <details><summary>第 3 题提示 1</summary><p>画一个菱形：entry 同时到 left 和 right，而两者都指向 shared。</p></details>
+        <details><summary>第 5 题提示 1</summary><p>一个模块 id 可以被多条边指向；再检查 runtime 是否记住该 id 已创建过的 <code>module.exports</code>。</p></details>
+      </section>
+
+      <section class="lesson-section" id="scope">
+        <h2>确定 P03 的完成边界</h2>
+        <div class="table-wrap"><table><thead><tr><th>核心阶段必须完成</th><th>核心阶段明确不承诺</th></tr></thead><tbody>
+          <tr><td>单一 JavaScript 入口、静态相对 ESM import</td><td>动态 import、package exports、alias、网络 URL</td></tr>
+          <tr><td>AST 提取依赖并转换已声明的 ESM 语法</td><td>自己编写 JavaScript parser 或完整转译器</td></tr>
+          <tr><td>按规范化文件路径建立可打印的有向图</td><td>tree shaking、chunk splitting、生产优化</td></tr>
+          <tr><td>模块表、局部加载函数、入口启动</td><td>完整复刻原生 ESM 链接与 live binding</td></tr>
+          <tr><td>链式与菱形依赖、错误路径、确定性测试</td><td>核心验收前实现插件系统、source map 或 watch</td></tr>
+        </tbody></table></div>
+        <p>模块缓存和循环依赖先作为“可观测的教学缺口”保留到第 7 课。不要在还没稳定基本图和 runtime 前同时扩展范围。</p>
+      </section>
+
+      <section class="lesson-section" id="submit">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="timeline" id="p03l01-a"><label for="p03l01-a">我完成了 Minipack 输出的预测、观察和修正解释。</label></li>
+          <li><input type="checkbox" data-progress="graph" id="p03l01-b"><label for="p03l01-b">我闭卷画出了三文件模块图，并标出了边的 specifier。</label></li>
+          <li><input type="checkbox" data-progress="pipeline" id="p03l01-c"><label for="p03l01-c">我能按四个阶段说出各自输入、输出和一个不变量。</label></li>
+          <li><input type="checkbox" data-progress="diagnostic" id="p03l01-d"><label for="p03l01-d">我回答了六个诊断问题，并标记不确定项。</label></li>
+          <li><input type="checkbox" data-progress="scope" id="p03l01-e"><label for="p03l01-e">我写下了自己的核心范围与明确不支持项。</label></li>
+        </ul>
+        <div class="callout success"><span class="callout-title">给我反馈的材料</span><p>把三列表、模块图、六道诊断答案和范围声明发给我。我会先指出概念混用和缺失不变量，再决定是否进入 L02；不会替你实现打包器。</p></div>
+      </section>
+
+      <section class="lesson-section" id="source">
+        <h2>首要资料</h2>
+        <div class="source-card"><p><strong>先读：</strong><a href="../sources/minipack/README.md">本地 Minipack README</a> 与 <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import">MDN import</a>。后者说明静态 import 的顶层、字面量和 host-defined resolution 边界。遇到不清楚的地方，随时把你的预测或图发给我追问。</p></div>
+      </section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0017-p02-acceptance-and-retrospective.html"><small>上一项目</small>P02 验收与复盘</a><a class="next" href="0019-p03-parse-one-module.html"><small>下一课</small>解析一个模块资产</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>勾选只保存在浏览器本地，不代表 P03 已完成。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/module-bundler-field-guide.html">模块打包器速查</a></li><li><a href="../sources/minipack/src/minipack.js">本地 Minipack 源码</a></li><li><a href="../TASKS.md">学习任务总表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P03-L01 · 先锁定可观察契约，再选择实现结构</footer>
+</body>
+</html>

@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P01-L05 安全执行 Promise Resolution Procedure</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P01-L05">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P01 · Lesson 5 / 8</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P01 · Resolution Procedure</p>
+        <h1>把不可信 thenable 安全地吸收进来</h1>
+        <p class="lede">handler 可以返回任何值，包括来自另一套实现的 thenable。你需要一个防御性决策程序：只读一次 <code>then</code>、只接受第一次回调、递归解析并阻止自引用。</p>
+        <div class="meta-strip">
+          <span class="meta-item">60–80 分钟</span>
+          <span class="meta-item">难度：困难</span>
+          <span class="meta-item">产出：对抗性 thenable 测试</span>
+        </div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>先纠正一个关键等式</h2>
+        <div class="concept-grid">
+          <div class="card"><b>fulfill(value)</b><p>把普通最终值写入 Promise，并进入 fulfilled 终态。</p></div>
+          <div class="card"><b>resolve(x)</b><p>运行解析程序；可能立即 fulfill，也可能跟随另一个仍 pending 的 thenable。</p></div>
+        </div>
+        <div class="callout warning">
+          <span class="callout-title">resolved 可能仍 pending</span>
+          <p>若外部 resolve 收到一个 pending thenable，当前 Promise 的结果已被锁定，后续 reject 必须忽略；但它要等 thenable 决定后才会 fulfilled 或 rejected。这正是“只看 state 是否 pending”不够的场景。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="algorithm">
+        <h2>把规范翻译成六个决策</h2>
+        <p>输入为目标 Promise <code>promise</code> 与候选结果 <code>x</code>。按顺序执行：</p>
+        <ol class="decision-tree">
+          <li><strong><code>promise === x</code>？</strong>以 <code>TypeError</code> reject，阻止直接自解析。</li>
+          <li><strong><code>x</code> 是普通原始值？</strong>直接 fulfill；<code>null</code> 也走这里。</li>
+          <li><strong>读取一次 <code>x.then</code>。</strong>读取动作本身可能触发 getter 并抛错；此时 reject。</li>
+          <li><strong><code>then</code> 不可调用？</strong>把整个对象 <code>x</code> 当普通值 fulfill。</li>
+          <li><strong>调用保存下来的 <code>then</code>。</strong>令 <code>this</code> 为 <code>x</code>，传入递归 resolve 与 reject，并共享一次性闩锁。</li>
+          <li><strong>调用抛错？</strong>若回调从未赢得闩锁则 reject；若已有回调获胜则忽略迟到异常。</li>
+        </ol>
+        <p>这不是“判断是否为自家 Promise”的类型分支，而是一个跨实现互操作协议。</p>
+
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>闭卷复述决策树</h3></div>
+          <p>合上页面，从自解析开始写出所有出口。每个出口都标记为 fulfill、reject 或递归 resolve。</p>
+          <p class="deliverable"><strong>交付：</strong>一张手写决策树；至少包含一次性闩锁与 getter 异常。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="adversarial-tests">
+        <h2>用“恶意 thenable”逼出正确性</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>thenable 行为</th><th>期望</th><th>被验证的规则</th></tr></thead>
+            <tbody>
+              <tr><td><code>then</code> 不是函数</td><td>以整个对象 fulfilled</td><td>对象不自动等于 thenable</td></tr>
+              <tr><td><code>then</code> getter 抛出 <code>e</code></td><td>rejected(e)</td><td>属性读取也在异常边界内</td></tr>
+              <tr><td>调用 resolve(y)</td><td>递归解析 y</td><td>支持嵌套 thenable</td></tr>
+              <tr><td>先 resolve，后 reject</td><td>第一次调用获胜</td><td>共享 once guard</td></tr>
+              <tr><td>先 resolve，后 throw</td><td>保留 resolve 路径</td><td>迟到异常被忽略</td></tr>
+              <tr><td>直接返回但不回调</td><td>保持 pending</td><td>then 的返回值没有协议意义</td></tr>
+              <tr><td>handler 返回 child 自己</td><td>rejected(TypeError)</td><td>直接自解析保护</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="task">
+          <div class="task-head"><span class="task-number">2</span><h3>先写七个对抗测试</h3></div>
+          <p>测试必须自己构造 thenable，不要只使用原生 Promise；否则很多 getter 与多次回调分支永远到不了。</p>
+          <p class="deliverable"><strong>交付：</strong>七个先红后绿的对抗测试，以及每个测试对应的 Promises/A+ 条款号。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="pseudocode">
+        <h2>用伪代码核对控制流</h2>
+        <pre><code>resolvePromise(promise, x)
+  如果 promise 与 x 是同一对象：reject TypeError
+  如果 x 不是对象或函数：fulfill x
+
+  尝试读取且只读取一次 x.then
+    读取失败：reject 该异常
+
+  如果 then 不可调用：fulfill x
+
+  创建本次 then 调用共享的 called 闩锁
+  尝试以 x 为 this 调用 then
+    resolvePromise(y)：若首次调用，递归 resolvePromise(promise, y)
+    rejectPromise(r)：若首次调用，reject promise with r
+  若调用 then 抛错且尚无回调获胜：reject 该异常</code></pre>
+        <p>这里有两层“一次性”：构造器交给 executor 的 resolve / reject 共享一个锁；每次调用外部 thenable 的两个回调也共享自己的锁。它们保护的边界不同。</p>
+
+        <div class="task">
+          <div class="task-head"><span class="task-number">3</span><h3>把临时 resolve 替换为解析程序</h3></div>
+          <ol>
+            <li>先通过普通原始值与普通对象测试。</li>
+            <li>加入 getter 异常和非函数 <code>then</code>。</li>
+            <li>加入单层、嵌套 thenable。</li>
+            <li>最后处理多次回调、迟到异常和直接自解析。</li>
+            <li>回归前四课全部测试，确认普通传播没有破坏。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>完整解析程序测试组；列出此次重构影响的旧测试。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="manual-trace">
+        <h2>手工追踪最刁钻的路径</h2>
+        <p>假设 handler 返回 thenable A；A 调用 resolve(B)；B 的 <code>then</code> getter 抛出错误 E。闭卷回答：</p>
+        <ol>
+          <li>child 在哪个时刻被锁定？</li>
+          <li>需要读取几次 A.then、几次 B.then？</li>
+          <li>最终 child 的状态与 reason 是什么？</li>
+          <li>如果 A 在 resolve(B) 后又 reject(R)，R 是否生效？</li>
+        </ol>
+        <details>
+          <summary>核对时间线</summary>
+          <p>A 的 resolve 回调第一次获胜后，解析递归进入 B；A 的后续 reject 被忽略。A.then 与 B.then 各读取一次。读取 B.then 抛出 E，因此 child 最终 rejected(E)。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section" id="pitfalls">
+        <h2>四条不能走的捷径</h2>
+        <ul>
+          <li><strong>只用 <code>instanceof</code>：</strong>会漏掉跨实现、跨 realm 与手写 thenable。</li>
+          <li><strong>重复读取 <code>x.then</code>：</strong>getter 可能每次返回不同值或产生副作用。</li>
+          <li><strong>使用固定递归深度：</strong>A+ 不允许把“很深”随意等同于“循环”；只要求直接自解析必须拒绝。</li>
+          <li><strong>把 then 的返回值当结果：</strong>协议看的是它调用哪个回调，而不是 <code>then</code> 方法自身 return 什么。</li>
+        </ul>
+      </section>
+
+      <section class="lesson-section">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="tree" id="p01l05-a"><label for="p01l05-a">我闭卷画出了六步解析决策树。</label></li>
+          <li><input type="checkbox" data-progress="adversarial" id="p01l05-b"><label for="p01l05-b">七个对抗性 thenable 测试通过。</label></li>
+          <li><input type="checkbox" data-progress="regression" id="p01l05-c"><label for="p01l05-c">前四课测试全部回归通过。</label></li>
+          <li><input type="checkbox" data-progress="terms" id="p01l05-d"><label for="p01l05-d">我能解释 resolved、fulfilled 与 settled 的差别。</label></li>
+        </ul>
+        <div class="source-card">
+          <p><strong>本课唯一行为裁判：</strong><a href="https://promisesaplus.com/#the-promise-resolution-procedure">Promises/A+ §2.3 — The Promise Resolution Procedure</a>。遇到边界分歧时先定位具体子条款，不以博客实现为准。</p>
+        </div>
+        <p>这是 P01 最难的一课。如果某个恶意 thenable 失败，把“调用顺序 + 闩锁状态 + 规范条款”发给 AI，请它只协助追踪分支。</p>
+      </section>
+
+      <section class="lesson-section">
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="0004-p01-chain-with-a-new-promise.html"><small>上一课</small>让 then 返回新 Promise</a>
+          <a class="next" href="0006-p01-align-with-microtasks.html"><small>下一课</small>用微任务对齐调度</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel">
+        <h2>本课进度 <span data-progress-label>0 / 4</span></h2>
+        <div class="progress-track"><div class="progress-fill" data-progress-fill></div></div>
+        <p>不要跳过对抗测试；它们就是解析程序的规格。</p>
+      </section>
+      <section class="side-panel">
+        <h2>随手查</h2>
+        <ul class="side-links">
+          <li><a href="../reference/promise-field-guide.html#resolution">解析决策树</a></li>
+          <li><a href="https://promisesaplus.com/#the-promise-resolution-procedure">A+ §2.3</a></li>
+          <li><a href="https://promisesaplus.com/#point-74">为何只读一次 then</a></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P01-L05 · 安全执行 Promise Resolution Procedure</footer>
+</body>
+</html>

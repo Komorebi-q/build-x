@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P03-L07 模型边界与提高项</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P03-L07">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P03 · Lesson 7 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P03 · Boundaries</p>
+        <h1>看见最小 runtime 与真正模块系统的距离</h1>
+        <p class="lede">能运行不等于等价于 ESM。本课用模块缓存、循环求值与 live binding 实验校准模型，再把 source map、hook 和增量重建放回正确的架构位置。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">类型：差分实验</span><span class="meta-item">产出：边界报告 + 可选扩展设计</span></div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>先写清：你实现的是哪一层近似</h2>
+        <div class="table-wrap"><table><thead><tr><th>主题</th><th>原生 ESM / 生产工具需要考虑</th><th>P03 核心教学模型</th></tr></thead><tbody>
+          <tr><td>依赖发现</td><td>静态 imports、re-exports、动态 imports、资源模块等</td><td>声明过的静态相对 import 子集</td></tr>
+          <tr><td>解析</td><td>URL、包、exports/imports、条件、扩展名与平台策略</td><td>importer-relative 的显式文件规则</td></tr>
+          <tr><td>链接</td><td>Module Records、导出解析、错误检查、循环图</td><td>specifier → numeric/string id mapping</td></tr>
+          <tr><td>绑定</td><td>import 是只读 live binding</td><td>Babel 转换结果 + 对象式 exports 的近似</td></tr>
+          <tr><td>求值</td><td>每个模块记录的状态、依赖顺序、循环与 TLA</td><td>同步 wrapper 深度调用；核心可暂不缓存</td></tr>
+          <tr><td>产物</td><td>chunks、source maps、hash、runtime manifest、优化</td><td>单入口单文件 bundle</td></tr>
+        </tbody></table></div>
+        <p>Babel 官方也明确说明，CommonJS transform 只改写 import/export 语法，并不了解不同模块系统的解析算法。它帮助你生成代码，不替你实现完整模块语义。</p>
+      </section>
+
+      <section class="lesson-section" id="differential">
+        <h2>必做：一次原生 ESM 差分实验</h2>
+        <p>从以下场景选一个，同时运行原生 ESM 与你的 bundle。先预测，再记录图、执行日志和最终值。</p>
+        <div class="concept-grid">
+          <div class="card"><b>共享副作用</b><p>菱形图中的 shared 在顶层增加计数。观察原生 ESM 与无缓存 runtime 的执行次数。</p></div>
+          <div class="card"><b>可变导出</b><p>exporter 导出可变绑定和更新函数；importer 在更新前后读取它，观察是否为 live view。</p></div>
+          <div class="card"><b>循环依赖</b><p>A 与 B 互相导入，并在不同时间读取对方导出；观察错误、部分初始化或终止行为。</p></div>
+          <div class="card"><b>解析差异</b><p>尝试 bare specifier 或省略扩展名，比较不同 host/tool 的处理与错误。</p></div>
+        </div>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>把差异分类，而不是急着修</h3></div><p>每个差异标记为：你的 bug、已声明的教学限制、transform 策略差异，或 host resolution 差异。只有 bug 必须在核心验收前修；限制进入边界声明。</p><p class="deliverable"><strong>交付：</strong>预测 / 两侧证据 / 差异分类 / 下一步决定四段报告。</p></div>
+      </section>
+
+      <section class="lesson-section" id="cache">
+        <h2>提高项一：模块缓存不是性能小技巧</h2>
+        <p>缓存改变模块的执行身份：同一 module id 多次被请求时，应返回同一个模块实例，而不是重新运行 wrapper。若还要面对循环，仅用“执行完再写缓存”不够。</p>
+        <div class="table-wrap"><table><thead><tr><th>缓存状态</th><th>发生什么</th><th>再次请求同 id</th></tr></thead><tbody>
+          <tr><td>absent</td><td>创建 module 实例</td><td>先把实例登记为 loading</td></tr>
+          <tr><td>loading</td><td>wrapper 尚未返回，可能位于循环中</td><td>返回当前部分初始化的 exports，或按声明策略报错</td></tr>
+          <tr><td>loaded</td><td>wrapper 已完成</td><td>直接返回同一 module.exports</td></tr>
+          <tr><td>failed（可选）</td><td>wrapper 抛错</td><td>明确删除、保留或重抛策略</td></tr>
+        </tbody></table></div>
+        <div class="callout warning"><span class="callout-title">这仍然更接近 CommonJS wrapper 语义</span><p>“在执行前缓存 module 对象”可以阻止简单循环无限递归，却不会自动得到原生 ESM 的实例化阶段、TDZ、导出解析和 live bindings。不要把通过一个循环夹具写成“支持完整 ESM 循环”。</p></div>
+        <details><summary>缓存设计提示 1</summary><p>缓存键必须是稳定 module id/identity，不能是原始 specifier；同一个 <code>./x.js</code> 在不同父模块下可能不同。</p></details>
+        <details><summary>缓存设计提示 2</summary><p>在调用 wrapper 之前登记实例，循环回到同 id 时才有可返回的部分对象。</p></details>
+        <details><summary>缓存设计提示 3</summary><p>用菱形副作用测试证明 wrapper 从两次变一次，同时断言两个 importer 获得同一导出对象身份。</p></details>
+      </section>
+
+      <section class="lesson-section" id="architecture">
+        <h2>其他提高项应该插在哪</h2>
+        <div class="table-wrap"><table><thead><tr><th>提高项</th><th>插入点</th><th>必须回答的问题</th><th>最小验证</th></tr></thead><tbody>
+          <tr><td>source map</td><td>transform/code generation 输出</td><td>每次转换如何组合原始与生成位置？</td><td>产物抛错能定位到夹具源行</td></tr>
+          <tr><td>loader/transform hook</td><td>读取后、依赖分析前或代码生成前</td><td>hook 输入输出、顺序、同步性和错误契约是什么？</td><td>两个非交换变换证明顺序</td></tr>
+          <tr><td>plugin/lifecycle hook</td><td>resolve、asset、graph、emit 等阶段边界</td><td>允许观察还是修改？失败后是否继续？</td><td>事件日志与失败隔离测试</td></tr>
+          <tr><td>增量重建</td><td>文件缓存 + 正反向依赖图</td><td>文件变化后哪些资产和 importer 必须失效？</td><td>改叶子只重做必要子图且结果等价全量构建</td></tr>
+          <tr><td>动态 import/chunk</td><td>依赖分类、chunk graph、异步 runtime</td><td>何时加载、如何定位、失败如何传播？</td><td>首包不含懒模块，触发后只加载一次</td></tr>
+        </tbody></table></div>
+        <p>核心验收后一次只选一个。若一个提高项迫使你同时重写三个阶段，先写接口和失败实验，不要从“大插件系统”开始。</p>
+      </section>
+
+      <section class="lesson-section" id="extension-plan">
+        <h2>可选：为一个提高项写最小设计单</h2>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>只设计，不急着实现</h3></div><ol>
+          <li>当前可观察缺口是什么？</li>
+          <li>哪条现有不变量会改变，哪条必须保持？</li>
+          <li>数据结构新增什么状态，生命周期如何？</li>
+          <li>最小红测试是什么？什么结果能推翻你的设计？</li>
+          <li>它与生产工具仍有哪些差距？</li>
+        </ol><p class="deliverable"><strong>交付：</strong>一页扩展设计单。完成 P03 核心不要求实现它。</p></div>
+      </section>
+
+      <section class="lesson-section" id="acceptance">
+        <h2>本课验收</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="boundary" id="p03l07-a"><label for="p03l07-a">我能逐项说明解析、链接、绑定和求值的教学近似。</label></li>
+          <li><input type="checkbox" data-progress="diff" id="p03l07-b"><label for="p03l07-b">我完成了一次原生 ESM 差分实验并分类差异。</label></li>
+          <li><input type="checkbox" data-progress="cache" id="p03l07-c"><label for="p03l07-c">我能解释缓存为何涉及模块身份和循环，而不只是性能。</label></li>
+          <li><input type="checkbox" data-progress="hooks" id="p03l07-d"><label for="p03l07-d">我能把 source map、hook 与增量重建放到相应阶段。</label></li>
+          <li><input type="checkbox" data-progress="plan" id="p03l07-e"><label for="p03l07-e">我写了一份边界声明；可选地完成一个扩展设计单。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>规范与工具边界：</strong><a href="https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html">ECMAScript Modules</a>描述 Module Records、链接与求值；<a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import">MDN import</a>说明静态分析与 live binding；<a href="https://babeljs.io/docs/babel-plugin-transform-modules-commonjs">Babel transform</a>明确只转换语法且不处理 resolution。扩展前先带着具体实验问题读，不进行无目的源码考古；任何差异难以分类时，把两侧证据发给我追问。</p></div></section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0023-p03-test-graph-and-runtime.html"><small>上一课</small>用夹具锁定全过程</a><a class="next" href="0025-p03-acceptance-and-retrospective.html"><small>下一课</small>P03 验收与复盘</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>核心目标是识别边界；提高项不必为了清单全部实现。</p></section><section class="side-panel"><h2>页内导航</h2><ul class="side-links"><li><a href="#differential">差分实验</a></li><li><a href="#cache">模块缓存</a></li><li><a href="#architecture">提高项位置</a></li><li><a href="#extension-plan">扩展设计单</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P03-L07 · 教学模型最有价值的部分，也包括它清楚承认的边界</footer>
+</body>
+</html>

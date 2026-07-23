@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P02-L05 分离 render 与 commit</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P02-L05">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P02 · Lesson 5 / 9</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P02 · Render / Commit</p>
+        <h1>候选树完成之前，不触碰可见页面</h1>
+        <p class="lede">render 阶段可以被切片，因为它只构建内存中的候选树；commit 阶段集中应用 DOM 副作用，让用户不会看见一半新、一半旧的界面。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">难度：中等</span><span class="meta-item">产出：提交边界与原子可见性测试</span></div>
+      </header>
+
+      <section class="lesson-section" id="two-phases">
+        <h2>两个阶段解决两类问题</h2>
+        <div class="table-wrap"><table><thead><tr><th>阶段</th><th>主要工作</th><th>能否暂停</th><th>可观察副作用</th></tr></thead><tbody>
+          <tr><td>render / reconciliation</td><td>执行组件、建立候选 Fiber、标记未来变更</td><td>教学模型中可以</td><td>不应修改已挂载 DOM</td></tr>
+          <tr><td>commit</td><td>按标记执行插入、更新、删除</td><td>本项目视作连续完成</td><td>DOM 在此阶段改变</td></tr>
+        </tbody></table></div>
+        <p>“render”在这里不是“画到屏幕上”，而是计算。命名容易误导，所以每次调试都问：我正在构建候选树，还是正在改变宿主环境？</p>
+      </section>
+
+      <section class="lesson-section" id="roots">
+        <h2>区分三种根引用</h2>
+        <div class="concept-grid">
+          <div class="card"><b>current root</b><p>与当前 DOM 对应、已经提交的 Fiber 树。</p></div>
+          <div class="card"><b>work-in-progress root</b><p>本轮正在构建的候选树，失败或未完成时不可见。</p></div>
+          <div class="card"><b>next unit</b><p>本轮 render 的恢复点；为空不自动代表已提交。</p></div>
+          <div class="card"><b>container root</b><p>连接浏览器 DOM 容器的教学 Fiber 根。</p></div>
+        </div>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>画一次被切成三轮的首次挂载</h3></div><p>每轮标出 next unit、候选树已完成部分、容器 DOM 内容。只有第三轮 render 完整结束后，才画出一次 commit。</p><p class="deliverable"><strong>交付：</strong>三轮 render + 一次 commit 的状态快照图。</p></div>
+      </section>
+
+      <section class="lesson-section" id="commit-walk">
+        <h2>提交遍历只消费已经准备好的工作</h2>
+        <p>首次挂载时，可以先把每个宿主 Fiber 的 DOM 节点在 render 阶段创建好，但暂不连接到可见容器。commit 遍历再把它们接到正确父 DOM 下。</p>
+        <ol class="decision-tree">
+          <li>从 work-in-progress root 的 child 开始，不把教学 root 当真实 DOM child 插入。</li>
+          <li>找到当前 Fiber 对应的宿主 parent DOM。</li>
+          <li>应用当前 Fiber 的 effect；首次挂载先只有 placement。</li>
+          <li>继续遍历 child 与 sibling，直到整棵候选树完成。</li>
+          <li>提交后把候选 root 提升为 current root，并清理临时引用。</li>
+        </ol>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>用 DOM 操作记录器验证 commit</h3></div><p>让宿主边界记录 create、append、property set。断言 render 轮次可以发生 create，但 container append 必须等到 commit；同一棵树只提交一次。</p><p class="deliverable"><strong>交付：</strong>操作日志断言与一次真实 DOM 集成验证。</p></div>
+      </section>
+
+      <section class="lesson-section" id="failure">
+        <h2>设计一个“中途暂停不泄漏”的负向测试</h2>
+        <p>给一棵需要多轮处理的树，只运行第一轮后检查容器。它应保持旧内容或为空；继续完成并 commit 后，完整新结构一次出现。</p>
+        <div class="callout danger"><span class="callout-title">常见失败信号</span><p>若暂停后容器出现部分节点，说明 DOM append 仍藏在 render 工作单元内。先移动副作用边界，不要用隐藏元素掩盖。</p></div>
+      </section>
+
+      <section class="lesson-section" id="hints">
+        <h2>逐级提示</h2>
+        <details><summary>提示 1：为什么出现重复节点</summary><p>检查一次 commit 后是否清空 work-in-progress root，调度器是否在 nextUnit 为空时反复触发 commit。</p></details>
+        <details><summary>提示 2：root 应该保存什么 DOM</summary><p>教学 root 不代表页面标签，它的 dom 可以指向外部 container，children 才是待插入的 UI。</p></details>
+        <details><summary>提示 3：create DOM 算不算可见副作用</summary><p>离线创建尚未连接的节点通常不会改变页面；真正需要守住的是对已挂载宿主树的变更边界。</p></details>
+      </section>
+
+      <section class="lesson-section"><h2>离开本课前</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="diagram" id="p02l05-a"><label for="p02l05-a">我画出了三种根引用在多轮 render 中的变化。</label></li>
+        <li><input type="checkbox" data-progress="boundary" id="p02l05-b"><label for="p02l05-b">render 阶段不再改变已挂载 DOM。</label></li>
+        <li><input type="checkbox" data-progress="commit" id="p02l05-c"><label for="p02l05-c">完整候选树只触发一次 commit。</label></li>
+        <li><input type="checkbox" data-progress="negative" id="p02l05-d"><label for="p02l05-d">中途暂停不泄漏半成品 DOM 的负向测试通过。</label></li>
+      </ul></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0012-p02-schedule-interruptible-render.html"><small>上一课</small>分片执行 render</a><a class="next" href="0014-p02-reconcile-updates.html"><small>下一课</small>增量协调 DOM 更新</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 4</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>先构建完整候选，再统一提交。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/react-renderer-field-guide.html#phases">render / commit 速查</a></li><li><a href="https://react.dev/learn/render-and-commit">React 官方概念说明</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P02-L05 · 计算可分片，宿主副作用集中提交</footer>
+</body>
+</html>

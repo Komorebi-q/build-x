@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P03-L03 解析路径并建立模块图</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P03-L03">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P03 · Lesson 3 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P03 · Resolution &amp; Graph</p>
+        <h1>让每条 import 边找到唯一文件身份</h1>
+        <p class="lede">单个 asset 只知道源码里的 specifier。现在你要加入 importer 语境、定义最小解析规则，并用工作队列建立一个可打印、可去重、可失败的有向图。</p>
+        <div class="meta-strip"><span class="meta-item">55–80 分钟</span><span class="meta-item">核心：resolve 与 graph identity</span><span class="meta-item">产出：菱形图与建图测试</span></div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>先理解：边的标签不是节点身份</h2>
+        <p>两个不同目录都可以写 <code>./util.js</code>，却指向不同文件；同一个文件也可能被 <code>./shared.js</code> 与 <code>./dir/../shared.js</code> 指向。解析必须同时接收 importer 与 specifier，再产出规范文件身份。</p>
+        <pre><code>resolve(importerFilename, rawSpecifier) → canonicalFilename
+
+本课程核心规则示例：
+  只接受以 ./ 或 ../ 开头的 JavaScript 文件 specifier
+  相对 importer 所在目录解析
+  规范化 . 与 ..
+  文件不存在或越出声明范围时给结构化错误</code></pre>
+        <div class="callout warning"><span class="callout-title">解析规则是宿主/工具策略，不是 parser 猜出来的</span><p>ECMAScript 规范把 module specifier 的实际加载与规范化留给 host。浏览器、Node 和打包器可以有不同规则。P03 必须把自己的极小规则写进 README 和测试，不能暗示已兼容 Node 或 Webpack resolution。</p></div>
+      </section>
+
+      <section class="lesson-section" id="graph-shape">
+        <h2>用菱形夹具区分两种去重</h2>
+        <div class="flow-row" aria-label="菱形依赖图">
+          <div class="flow-node">entry</div><span class="arrow">→</span><div class="flow-node">left</div><span class="arrow">→</span><div class="flow-node">shared</div>
+        </div>
+        <div class="flow-row" aria-label="菱形依赖图第二条路径">
+          <div class="flow-node">entry</div><span class="arrow">→</span><div class="flow-node">right</div><span class="arrow">→</span><div class="flow-node">shared</div>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>问题</th><th>应该在哪一层回答</th><th>证据</th></tr></thead><tbody>
+          <tr><td>shared 是否只成为一个资产节点？</td><td>graph builder 的文件身份表</td><td>图节点数与相同 canonical filename 的计数</td></tr>
+          <tr><td>left 与 right 是否都能找到 shared？</td><td>两个父 asset 各自的 mapping</td><td>两条边都指向同一 child id</td></tr>
+          <tr><td>shared 的顶层代码是否只执行一次？</td><td>bundle runtime 的模块实例缓存</td><td>带副作用计数的执行日志</td></tr>
+        </tbody></table></div>
+        <p>本课只解决前两项。第三项故意留到 runtime 与第 7 课；图去重不能冒充执行缓存。</p>
+      </section>
+
+      <section class="lesson-section" id="algorithm">
+        <h2>亲自完成：使用工作队列展开可达图</h2>
+        <p>队列或栈都能找到可达模块。选择会改变发现顺序，但不应改变边关系和最终业务语义。下面只给数据流，不给 JavaScript 实现：</p>
+        <pre><code>以入口的 canonical filename 创建第一个资产
+立刻把“文件身份 → 资产”登记到索引
+把入口放入待处理工作表
+
+只要仍有未处理资产：
+  对它的每个 raw specifier：
+    结合 importer 解析 child canonical filename
+    若文件身份尚未登记：创建、登记并加入工作表
+    在当前资产的局部 mapping 记录 raw specifier → child id
+
+返回所有资产与入口 id</code></pre>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>先画状态，再写 graph builder</h3></div><p>画出工作表、文件身份索引和已生成 mapping 在每轮后的内容。先对链式夹具手演，再对菱形夹具手演。明确“何时登记”才能避免同一文件被两个父节点同时重复加入。</p><p class="deliverable"><strong>交付：</strong>两张逐轮状态表和你选择 BFS/DFS 的理由。</p></div>
+      </section>
+
+      <section class="lesson-section" id="tests">
+        <h2>测试图，而不是只看数组长度</h2>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>建立四组文件夹具</h3></div><ol>
+          <li><strong>单节点：</strong>入口无依赖；图有一个节点、零条边。</li>
+          <li><strong>链：</strong>entry → message → name；边方向与每个 importer 的 mapping 正确。</li>
+          <li><strong>菱形：</strong>entry → left/right → shared；四个唯一节点、四条边，shared id 相同。</li>
+          <li><strong>失败：</strong>引用不存在文件；错误包含 importer、raw specifier 和解析后的候选路径。</li>
+        </ol><p class="deliverable"><strong>交付：</strong>图的规范化快照或结构断言、失败错误样例，以及精确运行命令。</p></div>
+        <div class="callout"><span class="callout-title">建议把“打印图”做成数据序列化边界</span><p>输出每个节点的 id、相对项目根的 filename 和边列表；测试数据结构，不要把 ANSI 颜色或终端排版当核心逻辑。绝对机器路径会让快照不可移植。</p></div>
+      </section>
+
+      <section class="lesson-section" id="cycles">
+        <h2>即使暂不支持循环，也不能无限展开</h2>
+        <p>若 A → B → A，先登记后展开的身份索引会阻止重复建节点。核心阶段可以明确选择：</p>
+        <ul>
+          <li>图允许形成回边，但 runtime 语义标为未支持；或</li>
+          <li>建图检测到回边后抛出结构化“循环暂不支持”错误。</li>
+        </ul>
+        <p>两种选择都必须有终止测试。悄悄无限循环、重复读文件直到内存耗尽，不能算“尚未实现扩展”。</p>
+        <details><summary>提示 1：如何区分回边与普通共享边</summary><p>只用“见过该文件”能去重，却不能区分它仍在当前展开链上还是早已完成。需要时记录 <code>unseen / visiting / done</code> 或维护当前祖先链。</p></details>
+        <details><summary>提示 2：id 何时分配</summary><p>同一 canonical filename 第一次被发现时分配一次，并与资产一起登记；之后所有边复用该 id。</p></details>
+      </section>
+
+      <section class="lesson-section" id="acceptance">
+        <h2>本课验收</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="resolver" id="p03l03-a"><label for="p03l03-a">我写明了最小 resolver 的输入、规则、不支持项和错误。</label></li>
+          <li><input type="checkbox" data-progress="identity" id="p03l03-b"><label for="p03l03-b">同一 canonical filename 在图中只有一个资产身份。</label></li>
+          <li><input type="checkbox" data-progress="mapping" id="p03l03-c"><label for="p03l03-c">每个 importer 的 raw specifier 都映射到正确 child id。</label></li>
+          <li><input type="checkbox" data-progress="fixtures" id="p03l03-d"><label for="p03l03-d">单节点、链、菱形与缺文件测试均有可重复证据。</label></li>
+          <li><input type="checkbox" data-progress="cycle" id="p03l03-e"><label for="p03l03-e">循环输入会有限终止，并表现为我声明的支持或失败策略。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>优先核对：</strong><a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import#module_specifier_resolution">MDN 的 module specifier resolution</a>、<a href="https://webpack.js.org/concepts/dependency-graph/">Webpack Dependency Graph</a> 与 <a href="../sources/minipack/src/minipack.js">Minipack 的 createGraph 教学实现</a>。注意 Minipack 原版没有按文件身份去重；这正是菱形实验要暴露的差距。图或身份策略卡住时，把逐轮状态表发给我。</p></div></section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0019-p03-parse-one-module.html"><small>上一课</small>解析一个模块</a><a class="next" href="0021-p03-serialize-module-table.html"><small>下一课</small>序列化模块表</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>图节点身份与运行时实例身份分开验收。</p></section><section class="side-panel"><h2>页内导航</h2><ul class="side-links"><li><a href="#graph-shape">菱形夹具</a></li><li><a href="#algorithm">建图轮廓</a></li><li><a href="#tests">图测试</a></li><li><a href="#cycles">循环终止</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P03-L03 · specifier 是边标签，canonical filename 才是图节点身份</footer>
+</body>
+</html>

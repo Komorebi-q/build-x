@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="面向前端开发者转全栈并补齐计算机基础的 build-your-own-x 复核清单，包含主线、选做、提高项和验收标准。">
+  <link rel="icon" href="data:,">
+  <title>build-your-own-x 复核版｜前端 → 全栈 + CS 基础</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #5f6b7d;
+      --soft: #8993a4;
+      --paper: #fffdf8;
+      --canvas: #f3f1eb;
+      --line: #dedbd2;
+      --navy: #17243d;
+      --blue: #315da8;
+      --blue-soft: #e8effb;
+      --green: #18705c;
+      --green-soft: #e4f3ed;
+      --amber: #9a5a14;
+      --amber-soft: #fff0d5;
+      --violet: #6d4e9d;
+      --violet-soft: #eee8f8;
+      --red: #9c3e3e;
+      --red-soft: #f9e5e3;
+      --shadow: 0 12px 34px rgba(32, 39, 52, 0.07);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(49, 93, 168, 0.08), transparent 25rem),
+        var(--canvas);
+      font: 15px/1.72 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    a { color: var(--blue); text-underline-offset: 3px; }
+    a:hover { color: #173d7c; }
+    code {
+      padding: 0.08em 0.35em;
+      border-radius: 4px;
+      background: #edf0f4;
+      font: 0.9em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    button, input { font: inherit; }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 58px 24px 48px;
+      color: white;
+      background: var(--navy);
+    }
+    .hero::after {
+      position: absolute;
+      inset: auto -8% -9rem auto;
+      width: 31rem;
+      height: 31rem;
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 50%;
+      box-shadow: 0 0 0 4rem rgba(255,255,255,0.025), 0 0 0 9rem rgba(255,255,255,0.02);
+      content: "";
+    }
+    .hero-inner {
+      position: relative;
+      z-index: 1;
+      width: min(1080px, 100%);
+      margin: 0 auto;
+    }
+    .eyebrow {
+      margin: 0 0 12px;
+      color: #aebdd8;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .hero h1 {
+      max-width: 800px;
+      margin: 0;
+      font-size: clamp(30px, 5vw, 52px);
+      line-height: 1.13;
+      letter-spacing: -0.035em;
+    }
+    .hero-lead {
+      max-width: 760px;
+      margin: 17px 0 0;
+      color: #d3dbea;
+      font-size: 17px;
+    }
+    .hero-meta {
+      display: flex;
+      gap: 9px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+    .hero-meta span, .hero-meta a {
+      padding: 6px 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 999px;
+      color: #cdd8eb;
+      background: rgba(255,255,255,0.06);
+      font-size: 12px;
+      text-decoration: none;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 34px;
+      width: min(1080px, calc(100% - 40px));
+      margin: 34px auto 72px;
+    }
+    .side-nav {
+      position: sticky;
+      top: 20px;
+      align-self: start;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,253,248,0.9);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .side-nav strong {
+      display: block;
+      margin-bottom: 9px;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .side-nav a {
+      display: block;
+      padding: 6px 8px;
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      text-decoration: none;
+    }
+    .side-nav a:hover { color: var(--ink); background: #efede6; }
+    .nav-progress {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .progress-track {
+      height: 7px;
+      margin: 7px 0 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #dedbd2;
+    }
+    .progress-fill {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+      transition: width 0.2s ease;
+    }
+
+    main { min-width: 0; }
+    .panel {
+      margin-bottom: 24px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+    .panel h2, .section h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.25;
+      letter-spacing: -0.015em;
+    }
+    .panel-intro {
+      margin: 9px 0 0;
+      color: var(--muted);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .stat {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #faf9f5;
+    }
+    .stat b { display: block; font-size: 25px; line-height: 1; }
+    .stat span { color: var(--muted); font-size: 11px; }
+
+    .audit-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 11px;
+      margin-top: 20px;
+    }
+    .audit-item {
+      padding: 15px 16px;
+      border-radius: 10px;
+      background: #f7f5ef;
+    }
+    .audit-item b { display: block; margin-bottom: 4px; font-size: 13px; }
+    .audit-item p { margin: 0; color: var(--muted); font-size: 13px; }
+    .audit-item.merge { border-left: 4px solid var(--blue); }
+    .audit-item.replace { border-left: 4px solid var(--green); }
+    .audit-item.lower { border-left: 4px solid var(--amber); }
+    .audit-item.add { border-left: 4px solid var(--violet); }
+
+    .route {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+      counter-reset: phase;
+    }
+    .route-step {
+      position: relative;
+      min-height: 116px;
+      padding: 15px 15px 15px 48px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #faf9f5;
+      counter-increment: phase;
+    }
+    .route-step::before {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      display: grid;
+      width: 24px;
+      height: 24px;
+      place-items: center;
+      border-radius: 50%;
+      color: white;
+      background: var(--navy);
+      content: counter(phase);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .route-step b { font-size: 13px; }
+    .route-step p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .route-note {
+      margin: 15px 0 0;
+      padding: 12px 14px;
+      border-radius: 9px;
+      color: #6d491b;
+      background: var(--amber-soft);
+      font-size: 13px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 30px 0 18px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255,253,248,0.92);
+    }
+    .toolbar span { margin-right: 4px; color: var(--muted); font-size: 12px; }
+    .filter-button {
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--muted);
+      background: white;
+      cursor: pointer;
+    }
+    .filter-button:hover, .filter-button.is-active {
+      color: white;
+      border-color: var(--navy);
+      background: var(--navy);
+    }
+
+    .section {
+      margin: 42px 0 46px;
+      scroll-margin-top: 20px;
+    }
+    .section-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 15px;
+    }
+    .section-heading p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .section-count {
+      flex: 0 0 auto;
+      color: var(--soft);
+      font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .project-card {
+      position: relative;
+      margin-bottom: 13px;
+      padding: 20px 20px 18px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--paper);
+      box-shadow: 0 5px 20px rgba(32,39,52,0.04);
+    }
+    .project-card[hidden] { display: none; }
+    .project-card[data-track="main"] { border-left: 4px solid var(--blue); }
+    .project-card[data-track="choice"] { border-left: 4px solid var(--green); }
+    .project-card[data-track="advanced"] { border-left: 4px solid var(--violet); }
+    .project-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .project-number {
+      flex: 0 0 auto;
+      color: var(--soft);
+      font: 800 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .project-main { min-width: 0; flex: 1; }
+    .title-line {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+    .project-title {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.32;
+    }
+    .project-title a { color: var(--ink); text-decoration-thickness: 1px; }
+    .badge {
+      display: inline-block;
+      padding: 3px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1.3;
+    }
+    .badge-main { color: #244b89; background: var(--blue-soft); }
+    .badge-choice { color: var(--green); background: var(--green-soft); }
+    .badge-advanced { color: var(--violet); background: var(--violet-soft); }
+    .badge-long { color: var(--amber); background: var(--amber-soft); }
+    .check-label {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 7px;
+      border-radius: 7px;
+      color: var(--muted);
+      background: #f1efe9;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .check-label input { accent-color: var(--green); }
+    .summary { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .meta {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .meta span {
+      padding: 3px 7px;
+      border-radius: 5px;
+      color: #556172;
+      background: #eff1f3;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .project-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin-top: 13px;
+    }
+    .project-detail {
+      padding: 11px 12px;
+      border-radius: 8px;
+      background: #f7f5ef;
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+    .project-detail strong { color: var(--ink); }
+    .project-detail.upgrade {
+      grid-column: 1 / -1;
+      border-left: 3px solid var(--violet);
+      background: #f6f1fb;
+    }
+    .related {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+
+    .blind-spots {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .blind-spot {
+      padding: 13px 14px;
+      border: 1px solid #ead5d1;
+      border-radius: 9px;
+      background: #fff8f6;
+      font-size: 12.5px;
+    }
+    .blind-spot strong { color: var(--red); }
+    .method {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    footer {
+      padding: 26px 20px 40px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 12px;
+    }
+
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      .side-nav { position: static; }
+      .side-nav a { display: inline-block; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .route { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .hero { padding: 42px 20px 36px; }
+      .layout { width: min(100% - 24px, 1080px); margin-top: 18px; }
+      .panel { padding: 19px; }
+      .stats, .audit-grid, .project-grid, .blind-spots { grid-template-columns: 1fr; }
+      .project-detail.upgrade { grid-column: auto; }
+      .project-top { flex-wrap: wrap; }
+      .check-label { margin-left: 29px; }
+    }
+    @media print {
+      body { background: white; }
+      .hero { padding: 28px; }
+      .layout { display: block; width: 100%; margin: 20px 0; }
+      .side-nav, .toolbar, .check-label { display: none !important; }
+      .panel, .project-card { box-shadow: none; break-inside: avoid; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">Repository review · 2026-07-22</p>
+      <h1>build-your-own-x：前端 → 全栈 + CS 基础复核版</h1>
+      <p class="hero-lead">不是“收藏 20 篇文章”，而是一条能做出作品、能验收、还能继续加难度的动手路线。优先沿用 JavaScript / TypeScript，再有目的地跨到 Python、C/C++ 和 Linux。</p>
+      <div class="hero-meta">
+        <a href="https://github.com/codecrafters-io/build-your-own-x" target="_blank" rel="noopener noreferrer">源仓库 ↗</a>
+        <span>基线 master@aa17439</span>
+        <span>31 个分类 · 359 条教程</span>
+        <span>本页精选 21 项</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="side-nav" aria-label="页面目录">
+      <strong>目录</strong>
+      <a href="#review">复核结论</a>
+      <a href="#route">最小主线</a>
+      <a href="#frontend">前端底层 · 5</a>
+      <a href="#fullstack">全栈补齐 · 6</a>
+      <a href="#cs">CS 基础 · 5</a>
+      <a href="#advanced">提高项 · 5</a>
+      <a href="#gaps">仓库外必补</a>
+      <div class="nav-progress">
+        <span id="progress-label">已完成 0 / 21</span>
+        <div class="progress-track" aria-hidden="true"><div class="progress-fill" id="progress-fill"></div></div>
+        <span>勾选进度仅保存在本浏览器</span>
+      </div>
+    </nav>
+
+    <main>
+      <section class="panel" id="review">
+        <h2>复核结论：原方向对，但需要去重、纠错和补系统能力</h2>
+        <p class="panel-intro">原文件的 20 项中有明显重复和描述过度：页头写 20 项，统计却是 8 + 7 + 6；实际第三层只有 5 项。更关键的是，“做完教程”与“真正掌握”之间缺少验收标准。</p>
+        <div class="stats">
+          <div class="stat"><b>9</b><span>最小主线项目</span></div>
+          <div class="stat"><b>7</b><span>按需选做项目</span></div>
+          <div class="stat"><b>5</b><span>提高项目</span></div>
+          <div class="stat"><b>90–160h</b><span>最小主线合理投入</span></div>
+        </div>
+        <div class="audit-grid">
+          <div class="audit-item merge">
+            <b>合并重复</b>
+            <p>Build your own React、Didact 与 Virtual DOM 高度重叠，合成一个主项目；Didact 只作为源码参照。</p>
+          </div>
+          <div class="audit-item lower">
+            <b>降低优先级</b>
+            <p>Redux、Tiny Interpreter 和 JavaScript Algorithms 分别是小练习、编译器重复项和资料库，不再占独立主线名额。</p>
+          </div>
+          <div class="audit-item replace">
+            <b>替换与纠错</b>
+            <p>Promise 换成开放的 TDD 教程；失效的 Gitlet HTTPS 链接换成真实对象模型教程；Express 不再误称为 Koa 式“洋葱模型”。</p>
+          </div>
+          <div class="audit-item add">
+            <b>补齐缺口</b>
+            <p>新增 Redis、Shell、Docker、CDN、BitTorrent、WebAssembly 与 NAND2Tetris，覆盖网络、进程、存储、部署和计算机分层。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="route">
+        <h2>最小主线：按依赖走，不按分类扫清单</h2>
+        <p class="panel-intro">优先做标有“主线”的 9 项。其余项目只有在能解释“它补哪块能力”时再开工。</p>
+        <div class="route">
+          <div class="route-step"><b>JS 运行时</b><p>01 Promise → 02 React。先把异步状态机、调度和更新模型做出来。</p></div>
+          <div class="route-step"><b>前端工具链</b><p>03 Bundler → 04 Compiler。贯通模块图、AST、代码生成与运行时。</p></div>
+          <div class="route-step"><b>浏览器全链路</b><p>05 Browser Engineering。把 HTTP、DOM、布局、绘制和脚本串起来。</p></div>
+          <div class="route-step"><b>服务端入口</b><p>06 Web Server。先理解 TCP / HTTP，再决定是否选做 Express 克隆。</p></div>
+          <div class="route-step"><b>数据与网络</b><p>11 Redis。用事件循环、协议、数据结构和 TTL 接上系统编程。</p></div>
+          <div class="route-step"><b>开发环境底层</b><p>12 Git → 14 Shell。理解对象、引用、进程、管道和信号。</p></div>
+        </div>
+        <p class="route-note"><strong>节奏校准：</strong>原文件写“每项 2–8 小时”不现实。Browser Engineering、Redis、数据库和 NAND2Tetris 都是数十到上百小时项目。每次只并行一个长项目，再搭配一个 3–8 小时的小项目。</p>
+      </section>
+
+      <div class="toolbar" aria-label="项目筛选">
+        <span>显示：</span>
+        <button class="filter-button is-active" type="button" data-filter="all">全部 21</button>
+        <button class="filter-button" type="button" data-filter="main">主线 9</button>
+        <button class="filter-button" type="button" data-filter="choice">选做 7</button>
+        <button class="filter-button" type="button" data-filter="advanced">提高 5</button>
+      </div>
+
+      <section class="section" id="frontend">
+        <div class="section-heading">
+          <div><h2>一、前端底层</h2><p>框架、异步、工具链与浏览器；与你当前工作连接最直接。</p></div>
+          <span class="section-count">01—05</span>
+        </div>
+
+        <article class="project-card" data-track="main">
+          <div class="project-top">
+            <span class="project-number">01</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://www.mauriciopoppe.com/notes/computer-science/computation/promises/" target="_blank" rel="noopener noreferrer">Implementing Promises from Scratch（TDD）</a></h3><span class="badge badge-main">主线</span></div>
+              <p class="summary">从状态机和 then 链开始，而不是背 API；适合作为整条路线的热身。</p>
+              <div class="meta"><span>JavaScript</span><span>4–8h</span><span>中等</span><span>异步 / 状态机</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p01">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>异步错误传播、链式解析和微任务顺序直接影响前端与 Node 调试；它比再写一个业务页面更能暴露认知漏洞。</div>
+            <div class="project-detail"><strong>验收产出：</strong>实现 pending / fulfilled / rejected、thenable 解析、链式 then、catch，并为状态转换写自动化测试。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>接入 <code>promises-aplus-tests</code>；用 <code>queueMicrotask</code> 对齐调度；补 finally、all、race、allSettled；记录与原生 Promise 的差异。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="main">
+          <div class="project-top">
+            <span class="project-number">02</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://pomb.us/build-your-own-react/" target="_blank" rel="noopener noreferrer">Build your own React</a></h3><span class="badge badge-main">主线</span></div>
+              <p class="summary">用一个项目理解 JSX、Fiber 式工作单元、reconciliation、function component 与 hook。</p>
+              <div class="meta"><span>JavaScript</span><span>8–16h</span><span>中等</span><span>渲染器 / 调度</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p02">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>你需要的是可迁移的渲染器心智模型，不是记 React 当前源码细节。教程是简化模型，不能等同于生产版 React。</div>
+            <div class="project-detail"><strong>验收产出：</strong>能渲染函数组件、分片执行工作、提交 DOM 更新，并让多个 <code>useState</code> 独立工作；用示意图讲清 render / commit。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>实现 keyed reconciliation、批量更新、effect 清理与错误边界；设计能证明“节点复用正确”的测试，并比较一次全量重建与增量更新。</div>
+          </div>
+          <p class="related">合并参照：<a href="https://github.com/pomber/didact" target="_blank" rel="noopener noreferrer">Didact 源码</a>。原文件的 Virtual DOM 教程不再单列；并非所有现代框架都依赖 Virtual DOM。</p>
+        </article>
+
+        <article class="project-card" data-track="main">
+          <div class="project-top">
+            <span class="project-number">03</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://github.com/ronami/minipack" target="_blank" rel="noopener noreferrer">Build Your Own Module Bundler — Minipack</a></h3><span class="badge badge-main">主线</span></div>
+              <p class="summary">从入口文件建立依赖图，再生成一个可运行 bundle，理解构建工具最小骨架。</p>
+              <div class="meta"><span>JavaScript</span><span>4–8h</span><span>中等</span><span>模块图 / Runtime</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p03">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>以后排查重复依赖、循环引用、产物膨胀和插件顺序时，你看到的是图和转换流水线，而不只是一份 Vite / Webpack 配置。</div>
+            <div class="project-detail"><strong>验收产出：</strong>完成 parser → dependency graph → bundle runtime，能打印模块图，并用夹具测试嵌套依赖和重复依赖。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>支持循环依赖与模块缓存；增加 source map、loader / plugin hook、增量重建；对比 ESM live binding 与 CommonJS value copy。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="main">
+          <div class="project-top">
+            <span class="project-number">04</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://github.com/jamiebuilds/the-super-tiny-compiler" target="_blank" rel="noopener noreferrer">The Super Tiny Compiler</a></h3><span class="badge badge-main">主线</span></div>
+              <p class="summary">用不到 200 行代码走通 tokenizer → parser → transformer → code generator。</p>
+              <div class="meta"><span>JavaScript</span><span>5–10h</span><span>中等</span><span>AST / 编译器</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p04">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>Babel、ESLint、模板编译器和 codemod 都复用这些阶段；这是前端工具链回报最高的小型 CS 项目之一。</div>
+            <div class="project-detail"><strong>验收产出：</strong>为四个阶段分别写测试；给 AST 加 source location；遇到非法 token 时返回包含行列号的结构化错误。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>任选 JSX 或 TypeScript 子集扩展语法；增加作用域与符号表、常量折叠、错误恢复、source map，并包装成可执行 CLI。</div>
+          </div>
+          <p class="related">原文件的 Tiny Interpreter 与本项目概念重叠，放到完成编译器后的对照阅读，不再作为独立主线。</p>
+        </article>
+
+        <article class="project-card" data-track="main">
+          <div class="project-top">
+            <span class="project-number">05</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://browser.engineering/" target="_blank" rel="noopener noreferrer">Browser Engineering</a></h3><span class="badge badge-main">主线</span><span class="badge badge-long">长项目</span></div>
+              <p class="summary">用 Python 从 HTTP 获取一路做到 DOM、样式、布局、绘制、事件与 JavaScript。</p>
+              <div class="meta"><span>Python</span><span>30–60h</span><span>困难</span><span>浏览器 / 渲染流水线</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p05">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>这是整份仓库里对前端最有长期价值的项目。性能、布局、事件和安全边界会从分散知识变成一条可执行流水线。</div>
+            <div class="project-detail"><strong>验收产出：</strong>至少完成网络、HTML tree、CSS cascade、block / inline layout、paint 和基础交互；能追踪一个元素从字节到像素的全过程。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>做一个 layout / paint inspector；输出阶段耗时；加入缓存、Cookie 和导航历史；为 same-origin 边界做威胁模型与负向测试。</div>
+          </div>
+          <p class="related">安全补读：仓库中的 <a href="https://aosabook.org/en/500L/the-same-origin-policy.html" target="_blank" rel="noopener noreferrer">The Same-Origin Policy</a>，但不要把它当成完整 Web 安全课程。</p>
+        </article>
+      </section>
+
+      <section class="section" id="fullstack">
+        <div class="section-heading">
+          <div><h2>二、全栈补齐</h2><p>沿 Node.js 向协议、服务框架、包管理和缓存系统延伸。</p></div>
+          <span class="section-count">06—11</span>
+        </div>
+
+        <article class="project-card" data-track="main">
+          <div class="project-top">
+            <span class="project-number">06</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://build-your-own.org/webserver/" target="_blank" rel="noopener noreferrer">Build Your Own Web Server From Scratch in JavaScript</a></h3><span class="badge badge-main">主线</span></div>
+              <p class="summary">绕开 Express，从 TCP 字节、HTTP 解析、路由和响应开始构造服务端。</p>
+              <div class="meta"><span>Node.js</span><span>12–20h</span><span>中等</span><span>TCP / HTTP</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p06">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>这是从前端跨到后端最合理的第一步：浏览器中的 request / response 终于会落到 socket、字节边界和协议状态机上。</div>
+            <div class="project-detail"><strong>验收产出：</strong>实现最小 HTTP/1.1 parser、路由、静态文件与错误响应；用原始 socket 和自动化测试覆盖分段到达的请求。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>支持 keep-alive、chunked body、流式响应和 backpressure；补超时、body 大小限制、路径穿越防护，再用负载测试记录吞吐与尾延迟。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="choice">
+          <div class="project-top">
+            <span class="project-number">07</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://github.com/antsmartian/lets-build-express" target="_blank" rel="noopener noreferrer">Let's Build Express</a></h3><span class="badge badge-choice">选做</span></div>
+              <p class="summary">在 Web Server 之后实现 middleware stack、路由匹配和错误处理。</p>
+              <div class="meta"><span>Node.js</span><span>5–10h</span><span>中等</span><span>框架设计</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p07">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>把协议层和应用框架层拆开，理解 <code>use</code>、<code>next</code>、route params 与 error middleware 的职责边界。</div>
+            <div class="project-detail"><strong>验收产出：</strong>实现 middleware stack、GET / POST 路由、参数解析、404 与四参数错误中间件，并用集成测试验证执行顺序。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>增加 async handler 的错误传播、子路由、参数校验与 context；画出 Express 线性栈和 Koa async onion 的调用差异。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="choice">
+          <div class="project-top">
+            <span class="project-number">08</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://citw.dev/tutorial/create-your-own-cli-tool" target="_blank" rel="noopener noreferrer">Create a CLI Tool in JavaScript</a></h3><span class="badge badge-choice">选做</span></div>
+              <p class="summary">做一个你会真的使用的脚手架、代码检查器或发布助手，而不是教程里的玩具命令。</p>
+              <div class="meta"><span>Node.js</span><span>3–6h</span><span>容易</span><span>工程化 / DX</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p08">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>CLI 是前端工程师把重复流程产品化的最短路径，能直接改善团队开发体验。</div>
+            <div class="project-detail"><strong>验收产出：</strong>支持参数、配置文件、交互提示、稳定退出码和 npm 发布；至少在一个真实仓库连续使用一周。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>增加 dry-run、结构化日志、shell completion、插件机制、跨平台路径测试和端到端测试；给失败场景写可行动的错误信息。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="choice">
+          <div class="project-top">
+            <span class="project-number">09</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://github.com/g-plane/tiny-package-manager" target="_blank" rel="noopener noreferrer">Tiny Package Manager</a></h3><span class="badge badge-choice">选做</span></div>
+              <p class="summary">从源码重建一个能下载依赖、展平依赖树并生成 lockfile 的迷你包管理器。</p>
+              <div class="meta"><span>TypeScript</span><span>4–8h</span><span>中等</span><span>依赖解析 / Lockfile</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p09">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>它能解释 node_modules、依赖冲突和 lockfile；但原资源主要是带注释源码，不是完整逐步教程，应“读完后闭卷重建”。</div>
+            <div class="project-detail"><strong>验收产出：</strong>实现 registry 下载、递归依赖、简单冲突处理、扁平安装和确定性 lockfile；对相同输入验证可复现结果。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>加入 semver 约束求解、完整性哈希、离线缓存、workspace 和 bin symlink；生命周期脚本先做威胁分析再决定是否执行。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="choice">
+          <div class="project-top">
+            <span class="project-number">10</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://engineerhead.github.io/dns-server/" target="_blank" rel="noopener noreferrer">Build a DNS Server in Node.js</a></h3><span class="badge badge-choice">选做</span></div>
+              <p class="summary">解析 zone file 与 DNS message，通过 UDP 回答查询，补上域名背后的协议结构。</p>
+              <div class="meta"><span>Node.js</span><span>8–16h</span><span>中等</span><span>DNS / UDP</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p10">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>域名故障、CDN、缓存 TTL 和服务发现都建立在 DNS 之上；这是比“背解析过程”更可靠的网络入门。</div>
+            <div class="project-detail"><strong>验收产出：</strong>解析 header / question / answer，支持常用记录并用 Wireshark 验证报文；对畸形长度和未知类型安全失败。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>支持 name compression pointer、TTL cache、CNAME 链和 TCP fallback；用 RFC 1034 / 1035 测试向量做兼容性检查。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="main">
+          <div class="project-top">
+            <span class="project-number">11</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://build-your-own.org/redis/" target="_blank" rel="noopener noreferrer">Build Your Own Redis with C/C++</a></h3><span class="badge badge-main">主线</span><span class="badge badge-long">长项目</span></div>
+              <p class="summary">把 socket、事件循环、协议、哈希表、平衡树、TTL 与线程池放进同一个可运行系统。</p>
+              <div class="meta"><span>C / C++</span><span>25–45h</span><span>困难</span><span>网络 / 数据结构 / 缓存</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p11">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>它同时补后端与 CS：网络编程、并发 I/O、真实数据结构和过期策略。事件循环也能反向加深你对 Node.js 的理解。</div>
+            <div class="project-detail"><strong>验收产出：</strong>完成 TCP client / server、request protocol、event loop、KV、hash table、sorted set 和 TTL；写压测报告而非只截图成功。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>兼容一组 RESP 命令；增加 AOF、崩溃恢复与过期策略对比；跑 AddressSanitizer / UndefinedBehaviorSanitizer，并记录 p50 / p99 延迟。</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="section" id="cs">
+        <div class="section-heading">
+          <div><h2>三、CS 基础</h2><p>用真实工具理解对象模型、自动机、进程和存储，而不是孤立刷概念。</p></div>
+          <span class="section-count">12—16</span>
+        </div>
+
+        <article class="project-card" data-track="main">
+          <div class="project-top">
+            <span class="project-number">12</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://wyag.thb.lt/" target="_blank" rel="noopener noreferrer">Write Yourself a Git</a></h3><span class="badge badge-main">主线</span></div>
+              <p class="summary">用 Python 实作 Git 对象、引用与索引，比只模拟 commit 链更接近真实仓库格式。</p>
+              <div class="meta"><span>Python</span><span>12–24h</span><span>中等</span><span>内容寻址 / DAG</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p12">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>Git 是每天使用的内容寻址数据库。理解 blob / tree / commit / ref 后，branch、HEAD、rebase 和恢复误操作会更具体。</div>
+            <div class="project-detail"><strong>验收产出：</strong>实现 init、cat-file、hash-object、log、ls-tree、checkout 等核心命令，并能读取一个由真实 Git 创建的小仓库。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>实现 index、三方合并与冲突标记；读取 packfile / delta；设计“误删分支后从 reflog 或不可达对象恢复”的演练。</div>
+          </div>
+          <p class="related">替换原因：原文件把 Gitlet 写成 HTTPS，但该地址不可用；同时原描述对 push / pull 的覆盖有夸大。</p>
+        </article>
+
+        <article class="project-card" data-track="choice">
+          <div class="project-top">
+            <span class="project-number">13</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://deniskyashif.com/2019/02/17/implementing-a-regular-expression-engine/" target="_blank" rel="noopener noreferrer">Implementing a Regular Expression Engine</a></h3><span class="badge badge-choice">选做</span></div>
+              <p class="summary">从正则语法构造 NFA 并执行匹配，把“模式字符串”还原成自动机。</p>
+              <div class="meta"><span>JavaScript</span><span>6–12h</span><span>中等</span><span>NFA / Parser</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p13">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>它把 parser、图遍历与复杂度结合在一起，也能解释为什么某些回溯正则会出现灾难性性能。</div>
+            <div class="project-detail"><strong>验收产出：</strong>画出模式到 NFA 的转换，支持教程语法，并用表驱动测试覆盖空串、分支、连接、重复与失败路径。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>增加字符类、锚点和捕获；与原生 RegExp 做 differential testing；对病理输入比较 backtracking 与 NFA 模拟的复杂度。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="main">
+          <div class="project-top">
+            <span class="project-number">14</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://brennan.io/2015/01/16/write-a-shell-in-c/" target="_blank" rel="noopener noreferrer">Write a Shell in C</a></h3><span class="badge badge-main">主线</span></div>
+              <p class="summary">通过 read / parse / fork / exec / wait 理解命令行背后的进程模型。</p>
+              <div class="meta"><span>C</span><span>8–16h</span><span>困难</span><span>进程 / 系统调用</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p14">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>部署脚本、CI、容器和 Node child process 最终都落到进程、文件描述符与信号；这是系统基础的高回报入口。</div>
+            <div class="project-detail"><strong>验收产出：</strong>实现 REPL、tokenize、fork / exec、wait 和 cd / exit 等 builtin；用系统调用跟踪工具解释一次命令执行。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>支持 pipe、重定向、环境变量、引号转义、SIGINT 与前后台 job；用伪终端做交互测试，避免只靠手测。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="choice">
+          <div class="project-top">
+            <span class="project-number">15</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://cstack.github.io/db_tutorial/" target="_blank" rel="noopener noreferrer">Let's Build a Simple Database</a></h3><span class="badge badge-choice">选做</span><span class="badge badge-long">长项目</span></div>
+              <p class="summary">用 C 构造类 SQLite 的 REPL、statement、page layout 和 B-tree。</p>
+              <div class="meta"><span>C</span><span>20–40h</span><span>困难</span><span>存储 / B-tree</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p15">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>它能把索引、页、节点分裂和磁盘布局变成可观察的字节；但不要把玩具实现误认为已经覆盖完整 SQL、事务与查询优化。</div>
+            <div class="project-detail"><strong>验收产出：</strong>完成持久化 page、B-tree 查找与分裂；写脚本生成大批数据，验证重启后数据与树不变量仍正确。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>增加 range scan、secondary index 和页缓存；设计最小 WAL 与 crash-recovery 测试；比较顺序插入、随机插入和查询延迟。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="choice">
+          <div class="project-top">
+            <span class="project-number">16</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://www.nand2tetris.org/" target="_blank" rel="noopener noreferrer">From NAND to Tetris</a></h3><span class="badge badge-choice">选做</span><span class="badge badge-long">长项目</span></div>
+              <p class="summary">从 NAND gate 一路做 CPU、assembler、VM、compiler 和简化 OS，建立完整计算机分层地图。</p>
+              <div class="meta"><span>HDL / VM / Jack</span><span>80–150h</span><span>困难</span><span>体系结构 / 编译 / OS</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p16">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>为什么做：</strong>如果你想系统补计算机基础，这是最完整的长期项目；如果只想尽快转全栈，它应排在 Web Server、Redis 和 Shell 之后。</div>
+            <div class="project-detail"><strong>验收产出：</strong>按课程测试套件完成硬件与软件两部分；能追踪一行 Jack 代码到 VM、汇编、机器指令和电路状态的变化。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>为 Jack 写一个可交互应用；给 CPU 增加一条自定义指令并修改 assembler / VM；写一篇跨层性能分析而非课程流水账。</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="section" id="advanced">
+        <div class="section-heading">
+          <div><h2>四、提高项</h2><p>主线完成后按职业方向选 1–2 个；它们的价值来自故障、性能与边界条件。</p></div>
+          <span class="section-count">17—21</span>
+        </div>
+
+        <article class="project-card" data-track="advanced">
+          <div class="project-top">
+            <span class="project-number">17</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://greenvitriol.com/posts/sync-engine-for-everyone" target="_blank" rel="noopener noreferrer">Build a Synchronization Engine with Node.js and Y.js</a></h3><span class="badge badge-advanced">提高</span></div>
+              <p class="summary">构造离线可编辑、重新连接可合并的同步系统，进入协同应用与 local-first 方向。</p>
+              <div class="meta"><span>Node.js / Y.js</span><span>12–24h</span><span>困难</span><span>CRDT / 实时协同</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p17">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>适合谁：</strong>想做文档、白板、设计工具或复杂状态同步的前端。这比普通 CRUD 更能形成差异化。</div>
+            <div class="project-detail"><strong>验收产出：</strong>两客户端离线编辑后能收敛；同步更新可持久化；presence 与文档数据分通道；重连不会重复应用操作。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>做断网、乱序、重复与延迟注入测试；增加 snapshot / compaction、权限与审计；测量文档增长、同步流量和首次加载时间。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="advanced">
+          <div class="project-top">
+            <span class="project-number">18</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://github.com/leandromoreira/cdn-up-and-running" target="_blank" rel="noopener noreferrer">CDN Up and Running</a></h3><span class="badge badge-advanced">提高</span></div>
+              <p class="summary">用 Nginx、Lua、Docker、Prometheus、Grafana 和压测工具做多节点缓存网络。</p>
+              <div class="meta"><span>Nginx / Lua / Docker</span><span>20–40h</span><span>困难</span><span>缓存 / 可观测性</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p18">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>适合谁：</strong>想补部署、性能、缓存与 SRE 视角的全栈工程师；它也直接解释前端静态资源为什么会快或会陈旧。</div>
+            <div class="project-detail"><strong>验收产出：</strong>搭建 origin 与多节点 cache，模拟延迟，暴露指标并做负载测试；能解释 hit ratio、p95 / p99 和回源流量。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>实现 invalidation、stale-while-revalidate、origin shield 与一致性哈希；注入节点故障，验证降级与恢复，并形成容量评估。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="advanced">
+          <div class="project-top">
+            <span class="project-number">19</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://github.com/Fewbytes/rubber-docker" target="_blank" rel="noopener noreferrer">Docker From Scratch Workshop</a></h3><span class="badge badge-advanced">提高</span></div>
+              <p class="summary">用 Python 调 Linux syscall，逐层实现 namespaces、cgroups、rootfs 与 capabilities。</p>
+              <div class="meta"><span>Python / Linux</span><span>16–30h</span><span>困难</span><span>容器 / 隔离</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p19">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>适合谁：</strong>已经会写 Dockerfile，但不清楚容器与虚拟机、进程隔离和资源限制差异的人。macOS 上需要 Linux VM。</div>
+            <div class="project-detail"><strong>验收产出：</strong>完成 workshop levels；能用 <code>ps</code>、<code>mount</code>、cgroup 文件与 capability 工具证明隔离效果，而不只“容器能启动”。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>加入 seccomp、read-only rootfs、最小 capability 与 rootless 思路；写清楚哪些边界只是教学近似、哪些会造成真实逃逸风险。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="advanced">
+          <div class="project-top">
+            <span class="project-number">20</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://allenkim67.github.io/programming/2016/05/04/how-to-make-your-own-bittorrent-client.html" target="_blank" rel="noopener noreferrer">Write Your Own BitTorrent Client</a></h3><span class="badge badge-advanced">提高</span></div>
+              <p class="summary">从 bencode、tracker、peer handshake 到 piece 下载，学习真实 P2P 协议。</p>
+              <div class="meta"><span>Node.js</span><span>12–24h</span><span>困难</span><span>P2P / 二进制协议</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p20">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>适合谁：</strong>想把 TCP、并发连接、二进制解析和完整性校验放在同一项目里的人；实用性不如 Web Server，训练密度更高。</div>
+            <div class="project-detail"><strong>验收产出：</strong>解析 torrent、请求 tracker、完成 peer handshake、下载 piece 并校验 hash；对断开连接与坏 piece 可重试。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>实现 resume、并发 piece scheduler、choking / unchoking；再选做 magnet link / DHT，并记录吞吐、公平性与资源上限。</div>
+          </div>
+        </article>
+
+        <article class="project-card" data-track="advanced">
+          <div class="project-top">
+            <span class="project-number">21</span>
+            <div class="project-main">
+              <div class="title-line"><h3 class="project-title"><a href="https://blog.scottlogic.com/2019/05/17/webassembly-compiler.html" target="_blank" rel="noopener noreferrer">Build Your Own WebAssembly Compiler</a></h3><span class="badge badge-advanced">提高</span></div>
+              <p class="summary">用 TypeScript 为小语言实现 tokenizer、parser 和 WASM binary emitter，并在浏览器运行。</p>
+              <div class="meta"><span>TypeScript / WASM</span><span>12–24h</span><span>困难</span><span>编译目标 / 字节码</span></div>
+            </div>
+            <label class="check-label"><input type="checkbox" data-project="p21">完成</label>
+          </div>
+          <div class="project-grid">
+            <div class="project-detail"><strong>适合谁：</strong>做过 04 后继续深入编译器、浏览器运行时或高性能 Web。它会把 AST、stack machine、binary encoding 和 JS host 串起来。</div>
+            <div class="project-detail"><strong>验收产出：</strong>生成合法 WASM module，支持函数、局部变量和控制流，并从浏览器调用导出函数；用 WAT 对照验证二进制。</div>
+            <div class="project-detail upgrade"><strong>提高项：</strong>增加静态类型检查、source location、import / export 与内存访问；对同一算法比较 JS 与 WASM 的启动、执行和跨边界调用成本。</div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel" id="gaps">
+        <h2>仓库外仍然必须补：不要把 build-your-own-x 当完整全栈课程</h2>
+        <p class="panel-intro">“从零实现”擅长解释内部机制，但对生产约束、标准更新和运营流程覆盖不足。</p>
+        <div class="blind-spots">
+          <div class="blind-spot"><strong>认证与 Web 安全：</strong>原 SSO 文章是 2018 年的教学实现，且不包含 OAuth 流程；不能作为生产方案。另学 OIDC / OAuth、Session、Cookie、CSRF、XSS、密钥轮换与授权模型。</div>
+          <div class="blind-spot"><strong>生产数据库：</strong>玩具数据库之后仍要学 PostgreSQL 的事务隔离、索引、执行计划、锁、迁移、备份与恢复。</div>
+          <div class="blind-spot"><strong>测试体系：</strong>每个 build 至少要有 unit、integration、negative case；全栈项目再补 contract、E2E 和 load test。</div>
+          <div class="blind-spot"><strong>部署与可观测性：</strong>补 CI/CD、配置与密钥管理、日志 / 指标 / trace、告警、回滚和容量规划；CDN 提高项可作为入口。</div>
+          <div class="blind-spot"><strong>API 工程：</strong>补幂等、分页、限流、超时、重试、错误契约、版本策略与兼容性，而不是只会搭 CRUD 路由。</div>
+          <div class="blind-spot"><strong>算法与数据结构：</strong><a href="https://github.com/trekhleb/javascript-algorithms" target="_blank" rel="noopener noreferrer">JavaScript Algorithms and Data Structures</a> 适合作为随查资料与专项练习，不算一个可验收的 build。</div>
+        </div>
+        <p class="method"><strong>复核方法：</strong>以源仓库 2026-07-14 的 master 提交 <code>aa17439</code> 为基线，逐项检查与前端 → 全栈 → CS 目标的相关性、内容重叠、链接可达性、教程范围和合理工时。筛选不是质量认证；这些实现都只用于学习，不能直接用于生产。</p>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    build-your-own-x 前端 / 全栈 / CS 复核版 · 2026-07-22 · 页面不依赖外部脚本或样式，可离线保存与打印
+  </footer>
+
+  <script>
+    (function () {
+      var storageKey = "byox-review-progress-v1";
+      var checks = Array.prototype.slice.call(document.querySelectorAll("[data-project]"));
+      var filterButtons = Array.prototype.slice.call(document.querySelectorAll("[data-filter]"));
+      var cards = Array.prototype.slice.call(document.querySelectorAll(".project-card"));
+      var label = document.getElementById("progress-label");
+      var fill = document.getElementById("progress-fill");
+      var saved = {};
+
+      try {
+        saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+      } catch (error) {
+        saved = {};
+      }
+
+      function updateProgress() {
+        var done = checks.filter(function (item) { return item.checked; }).length;
+        label.textContent = "已完成 " + done + " / " + checks.length;
+        fill.style.width = (done / checks.length * 100) + "%";
+      }
+
+      checks.forEach(function (item) {
+        item.checked = Boolean(saved[item.getAttribute("data-project")]);
+        item.addEventListener("change", function () {
+          saved[item.getAttribute("data-project")] = item.checked;
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(saved));
+          } catch (error) {
+            /* Local files can disable storage; progress still works for this session. */
+          }
+          updateProgress();
+        });
+      });
+
+      filterButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          var filter = button.getAttribute("data-filter");
+          filterButtons.forEach(function (item) { item.classList.remove("is-active"); });
+          button.classList.add("is-active");
+          cards.forEach(function (card) {
+            card.hidden = filter !== "all" && card.getAttribute("data-track") !== filter;
+          });
+        });
+      });
+
+      updateProgress();
+    }());
+  </script>
+</body>
+</html>

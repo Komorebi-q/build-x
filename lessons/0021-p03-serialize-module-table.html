@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P03-L04 序列化模块表</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P03-L04">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P03 · Lesson 4 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P03 · Serialization</p>
+        <h1>把模块图变成保留边界的程序文本</h1>
+        <p class="lede">bundle 不是把文件首尾相接。你要把每个模块的代码隔离在包装函数里，把局部依赖映射保存进模块表，并让生成结果可解析、可检查、可复现。</p>
+        <div class="meta-strip"><span class="meta-item">45–65 分钟</span><span class="meta-item">核心：module table</span><span class="meta-item">产出：序列化契约与语法测试</span></div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>先理解：bundle 同时包含代码和数据</h2>
+        <div class="table-wrap"><table><thead><tr><th>模块表中的部分</th><th>性质</th><th>用途</th></tr></thead><tbody>
+          <tr><td>模块 id</td><td>数据键</td><td>runtime 定位模块记录</td></tr>
+          <tr><td>包装函数</td><td>可执行代码</td><td>建立模块局部作用域并接收 runtime 能力</td></tr>
+          <tr><td>specifier → child id</td><td>每模块局部数据</td><td>让转换后的 <code>require("./x.js")</code> 找到正确节点</td></tr>
+          <tr><td>entry id</td><td>启动数据</td><td>告诉 runtime 从哪个节点开始执行</td></tr>
+        </tbody></table></div>
+        <pre><code>moduleTable 概念形状：
+  moduleId → [moduleWrapper, localMapping]
+
+moduleWrapper 接口：
+  (localRequire, module, exports) → 执行转换后的模块代码</code></pre>
+        <p>这只是接口形状，不规定你必须使用数组、对象或 Map。关键是序列化前后能恢复同一份关系。</p>
+      </section>
+
+      <section class="lesson-section" id="scope">
+        <h2>为什么必须保留模块作用域</h2>
+        <p>假设两个文件都在顶层声明 <code>const state</code>。简单拼接会产生重复声明，或者让一个模块意外读到另一个模块的变量。函数包装建立词法边界，并让 runtime 按模块注入 <code>require/module/exports</code>。</p>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>做一个“直接拼接必败”实验</h3></div><p>准备两个无 import 的模块，它们声明相同顶层名字并产生不同日志。先预测字符串拼接的解析/执行结果，再比较函数包装后的结果。不要把此实验的修复与整个 runtime 一次写完。</p><p class="deliverable"><strong>交付：</strong>失败现象、原因和“函数边界修复了什么 / 没修复什么”说明。</p></div>
+      </section>
+
+      <section class="lesson-section" id="encoding">
+        <h2>代码生成边界：不要把所有东西都当字符串</h2>
+        <ul>
+          <li>mapping 是数据，应使用可靠的数据序列化方式；不要手工给路径加引号。</li>
+          <li>转换后的模块代码需要作为函数体生成；要警惕注释、反引号、Unicode、换行和 sourceURL 等边界。</li>
+          <li>输出应通过 JavaScript parser 的“整份程序可解析”测试，而不是只肉眼看起来像代码。</li>
+          <li>同一图输入应产生字节稳定的输出；不要依赖未声明的文件系统枚举顺序。</li>
+        </ul>
+        <div class="callout warning"><span class="callout-title">安全问题与课程边界</span><p>打包器本来就在处理代码，最终产物会执行源码。这里的目标不是把不可信代码变安全，而是避免生成器因路径、映射或模板边界破坏产物结构。不要在构建阶段用 <code>eval</code> 执行待打包模块来“发现”依赖。</p></div>
+      </section>
+
+      <section class="lesson-section" id="build">
+        <h2>亲自完成：先生成模块表，再接启动壳</h2>
+        <pre><code>序列化图(graph):
+  以稳定顺序遍历每个资产
+  为每个资产生成：id、包装后的 code、序列化 mapping
+  把所有模块记录组合成 module table
+  把 module table 与 entry id 嵌入尚未填充细节的 runtime shell
+  返回整份程序文本</code></pre>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>为 serializer 写结构测试</h3></div><ol>
+          <li>单模块输出能被 parser 当成一份完整 script 解析。</li>
+          <li>两个模块相同顶层变量名不会处于同一词法作用域。</li>
+          <li>带引号、反斜线或非 ASCII 字符的 specifier/mapping 仍保持数据原值。</li>
+          <li>菱形图中两条父边的 mapping 都保留，并指向同一 shared id。</li>
+          <li>同一规范化图连续生成两次，输出完全一致。</li>
+        </ol><p class="deliverable"><strong>交付：</strong>五组序列化测试、一个产物结构标注图和输出哈希对比。</p></div>
+      </section>
+
+      <section class="lesson-section" id="review">
+        <h2>产物阅读练习</h2>
+        <p>选择一个三模块产物，给文本分区标注：</p>
+        <ol>
+          <li>runtime shell 的开始与结束；</li>
+          <li>每个 wrapper 的作用域边界；</li>
+          <li>每个 mapping 的所属父模块；</li>
+          <li>entry id 从哪里进入 runtime；</li>
+          <li>业务源代码经 transform 后位于何处。</li>
+        </ol>
+        <p>如果你无法从产物中指出这些边界，说明数据结构可能只存在于实现者脑中，调试时会非常困难。</p>
+        <details><summary>提示 1：输出稳定性</summary><p>先让 graph 提供明确的模块顺序或按稳定字段排序；不要在 serializer 中偷偷重新发现依赖。</p></details>
+        <details><summary>提示 2：mapping 的语境</summary><p>相同 raw specifier 在不同父模块中可能指向不同 id，所以 mapping 不能是一张脱离父模块的全局表。</p></details>
+        <details><summary>提示 3：测试生成代码</summary><p>“能解析”与“能正确执行”是两道关。本课先用 parser 锁定语法；下一课用受控 runtime 日志验证执行。</p></details>
+      </section>
+
+      <section class="lesson-section" id="acceptance">
+        <h2>本课验收</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="table" id="p03l04-a"><label for="p03l04-a">我能解释 module table 每一部分由哪个阶段产生。</label></li>
+          <li><input type="checkbox" data-progress="scope" id="p03l04-b"><label for="p03l04-b">模块 wrapper 能隔离同名顶层声明。</label></li>
+          <li><input type="checkbox" data-progress="syntax" id="p03l04-c"><label for="p03l04-c">生成产物通过整份 script 的 parser 语法检查。</label></li>
+          <li><input type="checkbox" data-progress="mapping" id="p03l04-d"><label for="p03l04-d">特殊字符与菱形 mapping 的数据边界有测试。</label></li>
+          <li><input type="checkbox" data-progress="stable" id="p03l04-e"><label for="p03l04-e">同一图的产物字节稳定，并保存了哈希证据。</label></li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>优先核对：</strong><a href="../sources/minipack/src/minipack.js">Minipack 的 bundle 讲解</a>用于观察 wrapper + mapping 形状；<a href="https://babeljs.io/docs/babel-plugin-transform-modules-commonjs">Babel CommonJS transform</a>用于确认转换代码期待的 runtime 接口。只提炼契约，不复制完整实现。若你的产物无法解析，把最小失败产物和 parser 错误位置发给我。</p></div></section>
+
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0020-p03-resolve-and-build-graph.html"><small>上一课</small>解析路径并建图</a><a class="next" href="0022-p03-run-bundle-runtime.html"><small>下一课</small>运行 bundle runtime</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>本课只保证产物结构正确，下一课再验证执行。</p></section><section class="side-panel"><h2>页内导航</h2><ul class="side-links"><li><a href="#scope">作用域实验</a></li><li><a href="#encoding">代码生成边界</a></li><li><a href="#build">结构测试</a></li><li><a href="#review">阅读产物</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P03-L04 · bundle 是带模块边界的数据表与程序，不是源码首尾相接</footer>
+</body>
+</html>

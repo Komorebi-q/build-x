@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P01-L01 先观察 Promise 的行为</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P01-L01">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P01 · Lesson 1 / 8</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P01 · 行为基线</p>
+        <h1>先观察，再实现 Promise</h1>
+        <p class="lede">这一课不写 Promise。你先用原生 Promise 建立可验证的行为模型：executor 何时运行、状态如何锁定、handler 为什么稍后执行。</p>
+        <div class="meta-strip">
+          <span class="meta-item">25–40 分钟</span>
+          <span class="meta-item">前置诊断</span>
+          <span class="meta-item">产出：状态图 + 顺序解释</span>
+        </div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>完成后你应该能够</h2>
+        <div class="objectives">
+          <div class="objective"><b>区分两个时刻</b><p>executor 同步执行；reaction handler 不在当前调用栈执行。</p></div>
+          <div class="objective"><b>画出三态模型</b><p>pending 只能单向转为 fulfilled 或 rejected。</p></div>
+          <div class="objective"><b>用证据回答</b><p>先预测输出，再运行实验校正，而不是凭印象背结论。</p></div>
+          <div class="objective"><b>确认学习起点</b><p>根据解释质量决定直接前进还是先补调用栈与队列。</p></div>
+        </div>
+        <div class="callout">
+          <span class="callout-title">与整条路线的关系</span>
+          <p>P01 是后续 React 调度、Node 事件循环和服务器并发模型的热身。这里训练的核心不是 API，而是“状态 + 队列 + 传播 + 证据”。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="experiment-one">
+        <h2>实验一：分开 executor 与 handler</h2>
+        <p>不要先运行。把你预测的五行输出写下来，并为每一行标注它来自“当前调用栈”还是“稍后排队的 reaction”。</p>
+        <pre><code>console.log("A");
+
+const p = new Promise((resolve) =&gt; {
+  console.log("B");
+  resolve("D");
+  console.log("C");
+});
+
+p.then((value) =&gt; console.log(value));
+console.log("E");</code></pre>
+
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>执行预测—观察—解释循环</h3></div>
+          <ol>
+            <li>闭卷写出输出顺序。</li>
+            <li>在浏览器控制台或 Node 中运行三次。</li>
+            <li>若结果与预测不同，只修改解释，不要只抄正确顺序。</li>
+            <li>用一句话解释：为什么调用 <code>resolve</code> 后仍先出现 <code>C</code> 和 <code>E</code>？</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>五行输出、每行所属阶段，以及一段不超过 80 字的因果解释。</p>
+        </div>
+
+        <details>
+          <summary>核对结果（完成预测后再展开）</summary>
+          <p>顺序应为 <code>A → B → C → E → D</code>。构造器立即调用 executor，所以 <code>B</code> 属于当前调用栈；<code>resolve</code> 锁定结果，但 <code>then</code> 的 handler 作为 reaction job 稍后执行。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section" id="experiment-two">
+        <h2>实验二：第一次结算获胜</h2>
+        <p>再次先预测。注意：这段实验验证的是“一次性决定”，不是微任务先后。</p>
+        <pre><code>const events = [];
+
+const p = new Promise((resolve, reject) =&gt; {
+  resolve("first");
+  reject("second");
+  resolve("third");
+});
+
+p.then(
+  (value) =&gt; events.push(`fulfilled:${value}`),
+  (reason) =&gt; events.push(`rejected:${reason}`)
+);
+
+queueMicrotask(() =&gt; console.log(events));</code></pre>
+
+        <div class="task">
+          <div class="task-head"><span class="task-number">2</span><h3>把行为改写成不变量</h3></div>
+          <ol>
+            <li>预测数组最终只有哪个元素。</li>
+            <li>分别交换三次调用的顺序，再预测一次。</li>
+            <li>把观察总结成一条测试可断言的不变量。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>一句形如“当……时，无论之后……，都……”的不变量。</p>
+        </div>
+
+        <details>
+          <summary>核对结果</summary>
+          <p>最终只有 <code>fulfilled:first</code>。第一次有效的 resolve / reject 锁定结果，后续调用不改变状态和值。注意“值不变”指身份不变，不表示对象会被深度冻结。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section" id="state-machine">
+        <h2>把实验压缩成状态机</h2>
+        <div class="state-flow" aria-label="Promise 状态机">
+          <div class="state-card pending">PENDING<span class="branch-label">可迁移</span></div>
+          <span class="arrow">→</span>
+          <div class="state-card fulfilled">FULFILLED<span class="branch-label">value 固定</span></div>
+          <span class="arrow">或</span>
+          <div class="state-card rejected">REJECTED<span class="branch-label">reason 固定</span></div>
+        </div>
+        <p>状态机回答“现在是什么”；reaction 队列回答“状态确定时需要通知谁”。这两个问题先分开，后面再连接。</p>
+
+        <div class="task">
+          <div class="task-head"><span class="task-number">3</span><h3>闭卷重画</h3></div>
+          <ol>
+            <li>合上本页，用纸画出三个状态和合法箭头。</li>
+            <li>在终态旁写出必须保存的数据。</li>
+            <li>再补一条禁止箭头，并解释为什么必须禁止。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>一张自己的状态图；不要截图本页。</p>
+        </div>
+
+        <div class="callout warning">
+          <span class="callout-title">先不要混用三个词</span>
+          <p><strong>fulfilled</strong>、<strong>settled</strong> 与 <strong>resolved</strong> 不完全相同。尤其是 resolve 到另一个 pending thenable 时，当前 Promise 已被锁定，却可能仍未 fulfilled。第五课会专门处理。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="diagnostic">
+        <h2>前置诊断</h2>
+        <p>不查资料，用自己的话回答：</p>
+        <ol>
+          <li>为什么 executor 可以同步执行，但 <code>then</code> handler 不应同步执行？</li>
+          <li>调用 <code>resolve</code> 与调用 handler 是同一个动作吗？</li>
+          <li>如果同一 Promise 注册三个 <code>then</code>，状态机需要变成三个吗？为什么？</li>
+          <li>你会用什么证据证明 handler 没有在当前栈执行？</li>
+        </ol>
+        <details>
+          <summary>自评分标准</summary>
+          <ul>
+            <li><strong>可以前进：</strong>能区分“决定结果”和“通知观察者”，并能设计输出顺序测试。</li>
+            <li><strong>先补 20 分钟：</strong>只能背出“Promise 是异步的”，但解释不了 executor 为何立即运行。</li>
+            <li><strong>请求讲解：</strong>调用栈、队列或回调注册仍模糊。把你的预测和困惑发给 AI，让它只解释概念，不写实现。</li>
+          </ul>
+        </details>
+      </section>
+
+      <section class="lesson-section" id="checkpoint">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="prediction" id="p01l01-a"><label for="p01l01-a">我先预测、后运行了两个实验。</label></li>
+          <li><input type="checkbox" data-progress="explanation" id="p01l01-b"><label for="p01l01-b">我能区分 executor 与 reaction handler 的执行时机。</label></li>
+          <li><input type="checkbox" data-progress="diagram" id="p01l01-c"><label for="p01l01-c">我闭卷画出了三态模型。</label></li>
+          <li><input type="checkbox" data-progress="diagnostic" id="p01l01-d"><label for="p01l01-d">我完成了四个诊断问题，并知道是否需要补基础。</label></li>
+        </ul>
+
+        <div class="source-card">
+          <p><strong>本课主来源：</strong><a href="https://promisesaplus.com/#promise-states">Promises/A+ — Promise States</a>。原生调度定义可查 <a href="https://tc39.es/ecma262/multipage/control-abstraction-objects.html#sec-promise-objects">ECMAScript Promise Objects</a>。</p>
+        </div>
+        <p>如果任何解释仍不清楚，把你的预测、实际输出和因果解释发给 AI。它是你的教练，可以继续追问，但不会替你写实现。</p>
+      </section>
+
+      <section class="lesson-section">
+        <h2>P01 课程地图</h2>
+        <ol>
+          <li><strong>行为基线：</strong>观察状态与执行时机（当前）</li>
+          <li><strong>状态机：</strong>用 TDD 锁定一次性迁移</li>
+          <li><strong>reaction：</strong>注册、排队与按序通知</li>
+          <li><strong>链式传播：</strong>让 <code>then</code> 返回新 Promise</li>
+          <li><strong>解析程序：</strong>安全吸收 thenable</li>
+          <li><strong>微任务：</strong>对齐现代原生调度</li>
+          <li><strong>兼容测试：</strong>接入 Promises/A+ 套件</li>
+          <li><strong>验收复盘：</strong>证明掌握而不是“跑通”</li>
+        </ol>
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="../TASKS.md"><small>课程总表</small>返回 P01 任务</a>
+          <a class="next" href="0002-p01-test-the-state-machine.html"><small>下一课</small>用测试锁定状态机</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel">
+        <h2>本课进度 <span data-progress-label>0 / 4</span></h2>
+        <div class="progress-track"><div class="progress-fill" data-progress-fill></div></div>
+        <p>勾选状态保存在当前浏览器。</p>
+      </section>
+      <section class="side-panel">
+        <h2>随手查</h2>
+        <ul class="side-links">
+          <li><a href="../reference/promise-field-guide.html">Promise 机制速查</a></li>
+          <li><a href="../RESOURCES.md">权威资源表</a></li>
+          <li><a href="#diagnostic">前置诊断</a></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P01-L01 · 先观察，再实现 Promise</footer>
+</body>
+</html>

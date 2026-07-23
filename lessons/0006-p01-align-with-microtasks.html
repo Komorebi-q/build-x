@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P01-L06 用微任务对齐原生 Promise 调度</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P01-L06">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../TASKS.md">Build X Learning</a>
+      <span class="course-tag">P01 · Lesson 6 / 8</span>
+    </div>
+  </header>
+
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P01 · Scheduling</p>
+        <h1>让 reaction 永远越过当前调用栈</h1>
+        <p class="lede">Promises/A+ 只要求“稍后”；现代原生 Promise 使用 reaction jobs。你将用顺序实验选择 scheduler，并证明同步与异步结算拥有一致的观察行为。</p>
+        <div class="meta-strip">
+          <span class="meta-item">30–45 分钟</span>
+          <span class="meta-item">难度：中等</span>
+          <span class="meta-item">产出：调度顺序测试</span>
+        </div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>先分清两个合格标准</h2>
+        <div class="concept-grid">
+          <div class="card"><b>Promises/A+ 合格</b><p>handler 不在调用 <code>then</code> 的当前执行栈内运行。规范注释允许宏任务或微任务方案。</p></div>
+          <div class="card"><b>贴近原生行为</b><p>ECMAScript 创建 PromiseReactionJob，并让 host 排队；在常见 JS 环境中表现为微任务时序。</p></div>
+        </div>
+        <p>因此，原始教程使用 timer 可以满足 A+ 的“新栈”要求，却不能复制原生 Promise 相对 timer 的顺序。本项目的提高目标是用 <code>queueMicrotask</code> 对齐常见原生行为。</p>
+      </section>
+
+      <section class="lesson-section" id="lab">
+        <h2>顺序实验：同一轮里谁先执行</h2>
+        <p>先写预测，再运行：</p>
+        <pre><code>console.log("A: sync start");
+
+setTimeout(() =&gt; console.log("D: timer task"), 0);
+queueMicrotask(() =&gt; console.log("B: manual microtask"));
+Promise.resolve().then(() =&gt; console.log("C: promise reaction"));
+
+console.log("E: sync end");</code></pre>
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>画出三段队列时间线</h3></div>
+          <ol>
+            <li>标出同步代码的起止。</li>
+            <li>按入队顺序写出两个微任务。</li>
+            <li>最后放置 timer task。</li>
+            <li>交换 <code>queueMicrotask</code> 与 <code>Promise.resolve().then</code> 两行，再预测一次。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>两条输出顺序和一张“当前栈 → 微任务排空 → 下一个 task”的时间线。</p>
+        </div>
+        <details>
+          <summary>核对结果</summary>
+          <p>首次顺序应为 <code>A → E → B → C → D</code>。两个微任务按入队顺序执行；交换入队语句后 B/C 也应交换。课程不依赖 Node 特有的 <code>process.nextTick</code>。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section" id="why-async">
+        <h2>为什么 settled 后注册也必须异步</h2>
+        <p>如果缓存命中时同步调用 handler、网络返回时异步调用 handler，调用者就必须猜测回调是否会“突然重入”。统一越过当前栈可以避免这种时间不一致，也常被称为避免 Zalgo。</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>场景</th><th>错误实现</th><th>正确不变量</th></tr></thead>
+            <tbody>
+              <tr><td>先 then，后 settle</td><td>排队后异步执行</td><td>异步执行</td></tr>
+              <tr><td>先 settle，后 then</td><td>看到结果后立即调用</td><td>仍通过 scheduler 异步执行</td></tr>
+              <tr><td>handler 中再 then</td><td>可能递归重入</td><td>新 reaction 继续排队</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="tests">
+        <h2>把顺序写成测试，而不是延时猜测</h2>
+        <div class="task">
+          <div class="task-head"><span class="task-number">2</span><h3>建立五个调度断言</h3></div>
+          <ol>
+            <li>handler 在 <code>then</code> 返回前不执行。</li>
+            <li>同步 resolve 的 handler 也要等当前栈结束。</li>
+            <li>已 fulfilled 后新增 handler 仍异步。</li>
+            <li>同一 Promise 的多个 reactions 保持 FIFO。</li>
+            <li>reaction 在后续 timer task 之前执行。</li>
+          </ol>
+          <p>优先用一个 trace 数组记录事件，再在最终 timer 或测试框架的异步能力中一次断言完整顺序；不要给每一步随意加几十毫秒等待。</p>
+          <p class="deliverable"><strong>交付：</strong>五个稳定通过的顺序测试，连续运行多次无偶发失败。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="scheduler-choice">
+        <h2>替换生产 scheduler，保留测试边界</h2>
+        <p>第三课已经把 scheduler 抽成依赖。现在让生产版本使用微任务机制，同时保留可控测试 scheduler：</p>
+        <pre><code>reaction runner 只负责：选择 handler、传播结果
+scheduler 只负责：决定 job 何时进入执行
+
+生产：enqueue(job) → 微任务
+测试：enqueue(job) → 可控队列</code></pre>
+        <div class="task">
+          <div class="task-head"><span class="task-number">3</span><h3>完成调度器替换与差分实验</h3></div>
+          <ol>
+            <li>保持 reaction runner 不变，只替换生产 scheduler。</li>
+            <li>使用相同 trace 脚本分别运行原生 Promise 与你的实现。</li>
+            <li>比较同步日志、reaction、timer 的相对顺序。</li>
+            <li>记录仍存在的行为差异，不要为了“看起来一样”修改不相关逻辑。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>一份差分顺序表，至少包含 pending 前注册与 settled 后注册两种场景。</p>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="risk">
+        <h2>微任务不是免费的</h2>
+        <div class="callout danger">
+          <span class="callout-title">微任务饥饿</span>
+          <p>事件循环会持续排空微任务；若每个微任务无条件再创建一个微任务，timer、输入事件和渲染可能长时间得不到机会。你的 Promise 实现应调度有限 reactions，不要建立无界自循环。</p>
+        </div>
+        <p>这也是为什么调度策略属于明确边界：以后做 React 调度或服务器 backpressure 时，你会再次遇到“低延迟”与“公平让出”的取舍。</p>
+      </section>
+
+      <section class="lesson-section" id="self-check">
+        <h2>闭卷自查</h2>
+        <ol>
+          <li>Promises/A+ 为什么可以接受 timer，而本项目仍选择微任务？</li>
+          <li>resolve 是同步还是异步？handler 又是什么时机？</li>
+          <li>为何已 settled 的 Promise 也不能 inline 调 handler？</li>
+          <li>如果 reaction job 抛错，应该如何影响 child，而不是泄漏到 scheduler？</li>
+        </ol>
+        <details>
+          <summary>核对关键词</summary>
+          <p>A+ 最低互操作要求与原生时序不同；resolve 同步锁定、handler 排队；统一时间语义避免重入；reaction runner 捕获 handler 异常并 reject child。</p>
+        </details>
+      </section>
+
+      <section class="lesson-section">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="timeline" id="p01l06-a"><label for="p01l06-a">我完成了两次顺序预测与时间线。</label></li>
+          <li><input type="checkbox" data-progress="tests" id="p01l06-b"><label for="p01l06-b">五个调度测试稳定通过。</label></li>
+          <li><input type="checkbox" data-progress="diff" id="p01l06-c"><label for="p01l06-c">我比较了原生 Promise 与自己的实现。</label></li>
+          <li><input type="checkbox" data-progress="explain" id="p01l06-d"><label for="p01l06-d">我能解释 A+ 合格与原生对齐的差别。</label></li>
+        </ul>
+        <div class="source-card">
+          <p><strong>本课主来源：</strong><a href="https://promisesaplus.com/#point-67">Promises/A+ 注释 3.1</a>、<a href="https://tc39.es/ecma262/multipage/control-abstraction-objects.html#sec-newpromisereactionjob">ECMAScript NewPromiseReactionJob</a> 与 <a href="https://developer.mozilla.org/en-US/docs/Web/API/HTML_DOM_API/Microtask_guide">MDN Microtask Guide</a>。</p>
+        </div>
+        <p>若你的顺序与原生不一致，提交最小 trace，不要提交整个实现。AI 可以协助区分是 enqueue 时机还是 reaction 传播的问题。</p>
+      </section>
+
+      <section class="lesson-section">
+        <nav class="lesson-nav" aria-label="课程导航">
+          <a href="0005-p01-resolve-thenables-safely.html"><small>上一课</small>安全吸收 thenables</a>
+          <a class="next" href="0007-p01-run-conformance-tests.html"><small>下一课</small>运行 A+ 兼容测试</a>
+        </nav>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="side-panel">
+        <h2>本课进度 <span data-progress-label>0 / 4</span></h2>
+        <div class="progress-track"><div class="progress-fill" data-progress-fill></div></div>
+        <p>调度测试应连续运行稳定，不靠大延时碰运气。</p>
+      </section>
+      <section class="side-panel">
+        <h2>随手查</h2>
+        <ul class="side-links">
+          <li><a href="../reference/promise-field-guide.html#scheduling">调度边界速查</a></li>
+          <li><a href="https://tc39.es/ecma262/multipage/control-abstraction-objects.html#sec-triggerpromisereactions">TriggerPromiseReactions</a></li>
+          <li><a href="https://developer.mozilla.org/en-US/docs/Web/API/HTML_DOM_API/Microtask_guide">MDN 微任务指南</a></li>
+        </ul>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="page-footer">P01-L06 · 用微任务对齐原生 Promise 调度</footer>
+</body>
+</html>
