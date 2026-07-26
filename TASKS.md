@@ -43,13 +43,14 @@
 - 原始教程：[Implementing Promises from Scratch（TDD）](https://www.mauriciopoppe.com/notes/computer-science/computation/promises/)
 - 详细教程：
   - [ ] P01-L01 · [先观察，再实现 Promise](./lessons/0001-p01-observe-promise-behavior.html)
-  - [ ] P01-L02 · [用测试锁定状态机](./lessons/0002-p01-test-the-state-machine.html)
-  - [ ] P01-L03 · [注册与排空 Promise Reactions](./lessons/0003-p01-register-and-drain-reactions.html)
+  - [x] P01-L02 · [用测试锁定状态机](./lessons/0002-p01-test-the-state-machine.html)
+  - [x] P01-L03 · [注册与排空 Promise Reactions](./lessons/0003-p01-register-and-drain-reactions.html)
   - [ ] P01-L04 · [让 then 返回新的 Promise](./lessons/0004-p01-chain-with-a-new-promise.html)
   - [ ] P01-L05 · [安全执行 Promise Resolution Procedure](./lessons/0005-p01-resolve-thenables-safely.html)
   - [ ] P01-L06 · [用微任务对齐原生 Promise 调度](./lessons/0006-p01-align-with-microtasks.html)
   - [ ] P01-L07 · [运行 Promises/A+ 兼容测试](./lessons/0007-p01-run-conformance-tests.html)
   - [ ] P01-L08 · [Promise 项目验收与复盘](./lessons/0008-p01-acceptance-and-retrospective.html)
+- 阶段记录：[P01 第一阶段检查点：状态机、Reactions 与调度边界](./packages/01Promise/PHASE-1.md)
 - 随查资料：[Promise 机制速查](./reference/promise-field-guide.html)
 
 ### [ ] P02 · 构建自己的 React
