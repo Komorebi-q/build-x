@@ -1,9 +1,11 @@
 import { runtimeScheduler, type Scheduler } from "./schedule";
 import { isFunction } from "./utils";
 
+export type ResolveCapability = (value?: any) => void;
+export type RejectCapability = (reason?: any) => void;
 export type PromiseExecutor = (
-  resolve: (value?: any) => void,
-  reject: (reason?: any) => void
+  resolve: ResolveCapability,
+  reject: RejectCapability
 ) => void;
 export type PendStatus = {
   status: "pending";
@@ -16,12 +18,12 @@ export type RejectedStatus = {
   status: "rejected";
   reason: any;
 };
-
 type State = PendStatus | FulfilledStatus | RejectedStatus;
 type StatusType = "fulfilled" | "pending" | "rejected";
+type ReactionRunner = (settlementPayload: any) => void;
+type Reaction = [runFulfilled: ReactionRunner, runRejected: ReactionRunner];
 export type FulfillCallback = (value?: any) => any;
 export type RejectCallback = (reason?: any) => any;
-type Reaction = [onFulfilled?: FulfillCallback, onRejected?: RejectCallback];
 export type PromiseLikeType = {
   then: (
     fulfilledCallback?: FulfillCallback,
@@ -52,7 +54,7 @@ export const PromiseLike = (
     const executor: PromiseExecutor = (resolve, reject) => {
       const onFulfilled = (resolvedValue: any, callback?: FulfillCallback) => {
         if (!isFunction(callback)) {
-          resolve(value);
+          resolve(resolvedValue);
           return;
         }
 
@@ -64,7 +66,7 @@ export const PromiseLike = (
       };
       const onRejected = (rejectedReason: any, callback?: RejectCallback) => {
         if (!isFunction(callback)) {
-          reject(reason);
+          reject(rejectedReason);
           return;
         }
 
@@ -98,7 +100,7 @@ export const PromiseLike = (
 
     return child;
   };
-  const resolve = (resolvedValue?: any) => {
+  const resolve: ResolveCapability = (resolvedValue?: any) => {
     if (freezed) return;
 
     status = "fulfilled";
@@ -106,15 +108,13 @@ export const PromiseLike = (
     freezed = true;
 
     for (const reaction of reactions) {
-      if (reaction[0]) {
-        const [fulfilledCallback] = reaction;
-        scheduler.enqueue(() => fulfilledCallback(resolvedValue));
-      }
+      const [runFulfilled] = reaction;
+      scheduler.enqueue(() => runFulfilled(resolvedValue));
     }
 
     clearReactions();
   };
-  const reject = (rejectedReason?: any) => {
+  const reject: RejectCapability = (rejectedReason?: any) => {
     if (freezed) return;
 
     status = "rejected";
@@ -122,10 +122,8 @@ export const PromiseLike = (
     freezed = true;
 
     for (const reaction of reactions) {
-      if (reaction[1]) {
-        const [, rejectedCallback] = reaction;
-        scheduler.enqueue(() => rejectedCallback(rejectedReason));
-      }
+      const [, runRejected] = reaction;
+      scheduler.enqueue(() => runRejected(rejectedReason));
     }
 
     clearReactions();

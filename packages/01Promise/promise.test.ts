@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, Mock } from "vitest";
 import {
-  FulfillCallback,
-  PromiseExecutor,
   PromiseLike,
-  RejectCallback,
-  PromiseLikeType
+  type PromiseExecutor,
+  type FulfillCallback,
+  type RejectCallback,
+  type PromiseLikeType
 } from "./promise";
 import { createTestScheduler } from "./schedule";
 
@@ -157,7 +157,7 @@ describe("MyPromise scheduler", () => {
   it("defers a fulfillment handler registered while pending until the scheduler is flushed after fulfillment", () => {
     const testScheduler = createTestScheduler();
     const scheduler = { enqueue: testScheduler.enqueue };
-    let resolveOuter: FulfillCallback = () => {};
+    let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
     const executor = vi.fn((resolve) => {
       resolveOuter = resolve;
     });
@@ -179,7 +179,7 @@ describe("MyPromise scheduler", () => {
   it("defers a rejection handler registered while pending until the scheduler is flushed after rejection", () => {
     const testScheduler = createTestScheduler();
     const scheduler = { enqueue: testScheduler.enqueue };
-    let rejectOuter: RejectCallback = () => {};
+    let rejectOuter: Parameters<PromiseExecutor>[1] = () => {};
     const executor = vi.fn((_, reject) => {
       rejectOuter = reject;
     });
@@ -201,7 +201,7 @@ describe("MyPromise scheduler", () => {
   it("defers a fulfillment handler register after fulfillment until the scheduler is flushed", () => {
     const testScheduler = createTestScheduler();
     const scheduler = { enqueue: testScheduler.enqueue };
-    let resolveOuter: FulfillCallback = () => {};
+    let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
     const executor = vi.fn((resolve) => {
       resolveOuter = resolve;
     });
@@ -223,7 +223,7 @@ describe("MyPromise scheduler", () => {
   it("defers a rejection handler register after rejection until the scheduler is flushed", () => {
     const testScheduler = createTestScheduler();
     const scheduler = { enqueue: testScheduler.enqueue };
-    let rejectOuter: RejectCallback = () => {};
+    let rejectOuter: Parameters<PromiseExecutor>[1] = () => {};
     const executor = vi.fn((_, reject) => {
       rejectOuter = reject;
     });
@@ -245,7 +245,7 @@ describe("MyPromise scheduler", () => {
   it("run all fulfillment handlers once in registration order after settlement is flushed", () => {
     const testScheduler = createTestScheduler();
     const scheduler = { enqueue: testScheduler.enqueue };
-    let resolveOuter: FulfillCallback = () => {};
+    let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
     const executor = vi.fn((resolve) => {
       resolveOuter = resolve;
     });
