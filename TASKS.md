@@ -50,7 +50,7 @@
   - [ ] P01-L06 · [用微任务对齐原生 Promise 调度](./lessons/0006-p01-align-with-microtasks.html)
   - [ ] P01-L07 · [运行 Promises/A+ 兼容测试](./lessons/0007-p01-run-conformance-tests.html)
   - [ ] P01-L08 · [Promise 项目验收与复盘](./lessons/0008-p01-acceptance-and-retrospective.html)
-- 阶段记录：[P01 第一阶段检查点：状态机、Reactions 与调度边界](./packages/01Promise/PHASE-1.md)
+- 阶段记录：[P01 第一阶段检查点：状态机、Reactions 与调度边界](./packages/01Promise/PHASE-1.md)；[P01 第二阶段检查点：Child Promise 与普通值传播](./packages/01Promise/PHASE-2.md)
 - 随查资料：[Promise 机制速查](./reference/promise-field-guide.html)
 
 ### [ ] P02 · 构建自己的 React

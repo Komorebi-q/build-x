@@ -1,5 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
-import { FulfillCallback, PromiseLike, RejectCallback } from "./promise";
+import { describe, it, expect, vi, Mock } from "vitest";
+import {
+  FulfillCallback,
+  PromiseExecutor,
+  PromiseLike,
+  RejectCallback,
+  PromiseLikeType
+} from "./promise";
 import { createTestScheduler } from "./schedule";
 
 describe("MyPromise state machine", () => {
@@ -169,6 +175,7 @@ describe("MyPromise scheduler", () => {
     expect(onFulfilled).toHaveBeenCalledOnce();
     expect(onFulfilled.mock.calls[0][0]).toBe(value);
   });
+
   it("defers a rejection handler registered while pending until the scheduler is flushed after rejection", () => {
     const testScheduler = createTestScheduler();
     const scheduler = { enqueue: testScheduler.enqueue };
@@ -298,5 +305,545 @@ describe("MyPromise microtask", () => {
     expect(events).toEqual(["executor", "sync"]);
     await Promise.resolve();
     expect(events).toEqual(["executor", "sync", "handler"]);
+  });
+});
+
+describe("MyPromise child Promise", () => {
+  it("returns a distinct child PromiseLike from then", () => {
+    const executor = vi.fn();
+    const parent = PromiseLike(executor);
+    const child = parent.then();
+    expect(child).not.toBe(parent);
+    expect(child).toEqual(
+      expect.objectContaining({
+        then: expect.any(Function),
+        getSnapshot: expect.any(Function)
+      })
+    );
+  });
+
+  it("returns a different child PromiseLike for each then call", () => {
+    let resolveOuter = () => {};
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolveOuter = resolve;
+    });
+    const parent = PromiseLike(executor);
+    const childA = parent.then();
+    const childB = parent.then();
+    expect(childA).not.toBe(parent);
+    expect(childB).not.toBe(parent);
+    expect(childA).not.toBe(childB);
+    expect(childA.getSnapshot().status).toBe("pending");
+    expect(childB.getSnapshot().status).toBe("pending");
+    resolveOuter();
+    expect(childA.getSnapshot().status).toBe("pending");
+    expect(childB.getSnapshot().status).toBe("pending");
+  });
+
+  it("propagates the fulfillment value when onFulfilled is missing after the parent is fulfilled", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(value);
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then();
+    expect(child.getSnapshot().status).toBe("pending");
+    testScheduler.flushNext();
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error('child status should be "fulfilled"');
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(value);
+  });
+
+  it("propagates the rejection reason when onRejected is missing after the parent is rejected", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const reason = new Error("promise rejected");
+    const executor = vi.fn<PromiseExecutor>((_, reject) => {
+      reject(reason);
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then();
+    expect(child.getSnapshot().status).toBe("pending");
+    testScheduler.flushNext();
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error('child status should be "rejected"');
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(reason);
+  });
+
+  it("treats a non-function onFulfilled as missing and propagates the fulfillment value", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(value);
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then({} as unknown as FulfillCallback);
+    expect(child.getSnapshot().status).toBe("pending");
+    testScheduler.flushNext();
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error('child status should be "fulfilled"');
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(value);
+  });
+
+  it("treats a non-function onRejected as missing and propagates the rejection reason", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const reason = new Error("promise rejected");
+    const executor = vi.fn<PromiseExecutor>((_, reject) => {
+      reject(reason);
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then(undefined, [] as unknown as RejectCallback);
+    expect(child.getSnapshot().status).toBe("pending");
+    testScheduler.flushNext();
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error('child status should be "rejected"');
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(reason);
+  });
+
+  it("fulfills the child with the ordinary value returned by onFulfilled", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    const childResult = {
+      value: "childValue"
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(value);
+    });
+    const childHandler = vi.fn<FulfillCallback>(() => childResult);
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then(childHandler);
+    expect(child.getSnapshot().status).toBe("pending");
+    expect(childHandler).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(childHandler).toHaveBeenCalledOnce();
+    expect(childHandler.mock.calls[0][0]).toBe(value);
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error('child status should be "fulfilled"');
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(childResult);
+  });
+
+  it("fulfills the child with the ordinary value returned by onRejected", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const reason = new Error("rejected");
+    const recoveryResult = {
+      value: "childValue"
+    };
+    const executor = vi.fn<PromiseExecutor>((_, reject) => {
+      reject(reason);
+    });
+    const onRejected = vi.fn<RejectCallback>(() => recoveryResult);
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then(undefined, onRejected);
+    expect(child.getSnapshot().status).toBe("pending");
+    expect(onRejected).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(onRejected).toHaveBeenCalledOnce();
+    expect(onRejected.mock.calls[0][0]).toBe(reason);
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error('child status should be "fulfilled"');
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(recoveryResult);
+  });
+
+  it("rejects the child with the exact error thrown by onFulfilled", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    const recoveryError = new Error("child rejected");
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(value);
+    });
+    const onFulfilled = vi.fn<FulfillCallback>(() => {
+      throw recoveryError;
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then(onFulfilled);
+    expect(child.getSnapshot().status).toBe("pending");
+    expect(onFulfilled).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(onFulfilled).toHaveBeenCalledOnce();
+    expect(onFulfilled.mock.calls[0][0]).toBe(value);
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error('child status should be "rejected"');
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(recoveryError);
+  });
+
+  it("rejects the child with the exact error thrown by onRejected", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const reason = new Error("parent error");
+    const recoveryError = new Error("child rejected");
+    const executor = vi.fn<PromiseExecutor>((_, reject) => {
+      reject(reason);
+    });
+    const onRejected = vi.fn<RejectCallback>(() => {
+      throw recoveryError;
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then(undefined, onRejected);
+    expect(child.getSnapshot().status).toBe("pending");
+    expect(onRejected).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(onRejected).toHaveBeenCalledOnce();
+    expect(onRejected.mock.calls[0][0]).toBe(reason);
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error('child status should be "rejected"');
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(recoveryError);
+  });
+
+  it("fulfills the child with the handler result when onFulfilled was registered while pending", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    const childResult = {
+      value: "childValue"
+    };
+    let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolveOuter = resolve;
+    });
+    const childHandler = vi.fn<FulfillCallback>(() => childResult);
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then(childHandler);
+    expect(child.getSnapshot().status).toBe("pending");
+    expect(childHandler).not.toHaveBeenCalled();
+    resolveOuter(value);
+    expect(child.getSnapshot().status).toBe("pending");
+    expect(childHandler).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(childHandler).toHaveBeenCalledOnce();
+    expect(childHandler.mock.calls[0][0]).toBe(value);
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error('child status should be "fulfilled"');
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(childResult);
+  });
+
+  it("fulfills the child with the handler result when onRejected was registered while pending", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const parentError = new Error("parent error");
+    const childResult = {
+      value: "childValue"
+    };
+    let rejectOuter: Parameters<PromiseExecutor>[1] = () => {};
+    const executor = vi.fn<PromiseExecutor>((_, reject) => {
+      rejectOuter = reject;
+    });
+    const childHandler = vi.fn<RejectCallback>(() => childResult);
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then(undefined, childHandler);
+    expect(child.getSnapshot().status).toBe("pending");
+    expect(childHandler).not.toHaveBeenCalled();
+    rejectOuter(parentError);
+    expect(child.getSnapshot().status).toBe("pending");
+    expect(childHandler).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(childHandler).toHaveBeenCalledOnce();
+    expect(childHandler.mock.calls[0][0]).toBe(parentError);
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error('child status should be "fulfilled"');
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(childResult);
+  });
+
+  it("settles sibling children independently from their own handler outcomes", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    const childAResult = {
+      value: "childValue"
+    };
+    const childBError = new Error("child error");
+    let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolveOuter = resolve;
+    });
+    const childAHandler = vi.fn<FulfillCallback>(() => childAResult);
+    const childBHandler = vi.fn<FulfillCallback>(() => {
+      throw childBError;
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const childA = parent.then(childAHandler);
+    const childB = parent.then(childBHandler);
+    expect(childA.getSnapshot().status).toBe("pending");
+    expect(childAHandler).not.toHaveBeenCalled();
+    expect(childB.getSnapshot().status).toBe("pending");
+    expect(childBHandler).not.toHaveBeenCalled();
+    resolveOuter(value);
+    expect(childA.getSnapshot().status).toBe("pending");
+    expect(childAHandler).not.toHaveBeenCalled();
+    expect(childB.getSnapshot().status).toBe("pending");
+    expect(childBHandler).not.toHaveBeenCalled();
+    testScheduler.flushAll();
+    expect(childAHandler).toHaveBeenCalledOnce();
+    expect(childAHandler.mock.calls[0][0]).toBe(value);
+    expect(childBHandler).toHaveBeenCalledOnce();
+    expect(childBHandler.mock.calls[0][0]).toBe(value);
+    const snapshotA = childA.getSnapshot();
+    const snapshotB = childB.getSnapshot();
+    if (snapshotA.status !== "fulfilled") {
+      throw new Error('child status should be "fulfilled"');
+    }
+    expect(snapshotA.status).toBe("fulfilled");
+    expect(snapshotA.value).toBe(childAResult);
+    if (snapshotB.status !== "rejected") {
+      throw new Error('child status should be "rejected"');
+    }
+    expect(snapshotB.status).toBe("rejected");
+    expect(snapshotB.reason).toBe(childBError);
+  });
+
+  it("runs only onFulfilled when a pending parent is fulfilled", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolveOuter = resolve;
+    });
+    const onFulfilled = vi.fn();
+    const onRejected = vi.fn();
+    const parent = PromiseLike(executor, scheduler);
+    parent.then(onFulfilled, onRejected);
+    expect(onFulfilled).not.toHaveBeenCalled();
+    expect(onRejected).not.toHaveBeenCalled();
+    resolveOuter(value);
+    expect(onFulfilled).not.toHaveBeenCalled();
+    expect(onRejected).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(onFulfilled).toHaveBeenCalledOnce();
+    expect(onRejected).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(onFulfilled).toHaveBeenCalledOnce();
+    expect(onRejected).not.toHaveBeenCalled();
+  });
+
+  it("runs only onRejected when a pending parent is rejected", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    let rejectOuter: Parameters<PromiseExecutor>[1] = () => {};
+    const executor = vi.fn<PromiseExecutor>((_, reject) => {
+      rejectOuter = reject;
+    });
+    const onFulfilled = vi.fn();
+    const onRejected = vi.fn();
+    const parent = PromiseLike(executor, scheduler);
+    parent.then(onFulfilled, onRejected);
+    expect(onFulfilled).not.toHaveBeenCalled();
+    expect(onRejected).not.toHaveBeenCalled();
+    rejectOuter(value);
+    expect(onFulfilled).not.toHaveBeenCalled();
+    expect(onRejected).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(onRejected).toHaveBeenCalledOnce();
+    expect(onFulfilled).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    expect(onRejected).toHaveBeenCalledOnce();
+    expect(onFulfilled).not.toHaveBeenCalled();
+  });
+
+  it("settles one chain link per queued reaction when flushed step by step", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolveOuter = resolve;
+    });
+    const result1 = {
+      value: "result1"
+    };
+    const result2 = {
+      value: "result2"
+    };
+    const result3 = {
+      value: "result3"
+    };
+    const fn1 = vi.fn<FulfillCallback>(() => result1);
+    const fn2 = vi.fn<FulfillCallback>(() => result2);
+    const fn3 = vi.fn<FulfillCallback>(() => result3);
+
+    const parent = PromiseLike(executor, scheduler);
+    const child1 = parent.then(fn1);
+    const child2 = child1.then(fn2);
+    const child3 = child2.then(fn3);
+
+    const testChild = (
+      child: PromiseLikeType,
+      fn: Mock<FulfillCallback>,
+      value: any,
+      parameter: any
+    ) => {
+      const snapshot = child.getSnapshot();
+      if (snapshot.status !== "fulfilled") {
+        throw new Error(`child status should be "fulfilled"`);
+      }
+      expect(snapshot.status).toBe("fulfilled");
+      expect(snapshot.value).toBe(value);
+      expect(fn).toHaveBeenCalledOnce();
+      expect(fn.mock.calls[0][0]).toBe(parameter);
+    };
+    expect(fn1).not.toHaveBeenCalled();
+    expect(fn2).not.toHaveBeenCalled();
+    expect(fn3).not.toHaveBeenCalled();
+    resolveOuter(value);
+    expect(fn1).not.toHaveBeenCalled();
+    expect(fn2).not.toHaveBeenCalled();
+    expect(fn3).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    testChild(child1, fn1, result1, value);
+    expect(fn2).not.toHaveBeenCalled();
+    expect(fn3).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    testChild(child1, fn1, result1, value);
+    testChild(child2, fn2, result2, result1);
+    expect(fn3).not.toHaveBeenCalled();
+    testScheduler.flushNext();
+    testChild(child1, fn1, result1, value);
+    testChild(child2, fn2, result2, result1);
+    testChild(child3, fn3, result3, result2);
+    testScheduler.flushNext();
+    testChild(child1, fn1, result1, value);
+    testChild(child2, fn2, result2, result1);
+    testChild(child3, fn3, result3, result2);
+  });
+
+  it("propagates the fulfillment value when onFulfilled was missing while the parent was pending", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const value = {
+      value: "resolved"
+    };
+    let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolveOuter = resolve;
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then();
+    expect(child.getSnapshot()).toEqual({
+      status: "pending"
+    });
+    resolveOuter(value);
+    expect(child.getSnapshot()).toEqual({
+      status: "pending"
+    });
+    testScheduler.flushNext();
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error("child status should be 'fulfilled'");
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(value);
+  });
+
+  it("propagates the rejection reason when onRejected is missing before the parent is rejected", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = {
+      enqueue: testScheduler.enqueue
+    };
+    const reason = new Error("rejected");
+    let rejectOuter: Parameters<PromiseExecutor>[1] = () => {};
+    const executor = vi.fn<PromiseExecutor>((_, reject) => {
+      rejectOuter = reject;
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then();
+    expect(child.getSnapshot()).toEqual({
+      status: "pending"
+    });
+    rejectOuter(reason);
+    expect(child.getSnapshot()).toEqual({
+      status: "pending"
+    });
+    testScheduler.flushNext();
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error("child status should be 'rejected'");
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(reason);
   });
 });

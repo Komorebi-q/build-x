@@ -1,4 +1,5 @@
 import { runtimeScheduler, type Scheduler } from "./schedule";
+import { isFunction } from "./utils";
 
 export type PromiseExecutor = (
   resolve: (value?: any) => void,
@@ -18,14 +19,21 @@ export type RejectedStatus = {
 
 type State = PendStatus | FulfilledStatus | RejectedStatus;
 type StatusType = "fulfilled" | "pending" | "rejected";
-export type FulfillCallback = (value?: any) => void;
-export type RejectCallback = (reason?: any) => void;
+export type FulfillCallback = (value?: any) => any;
+export type RejectCallback = (reason?: any) => any;
 type Reaction = [onFulfilled?: FulfillCallback, onRejected?: RejectCallback];
+export type PromiseLikeType = {
+  then: (
+    fulfilledCallback?: FulfillCallback,
+    rejectedCallback?: RejectCallback
+  ) => PromiseLikeType;
+  getSnapshot: () => State;
+};
 
 export const PromiseLike = (
   executor: PromiseExecutor,
   scheduler: Scheduler = runtimeScheduler
-) => {
+): PromiseLikeType => {
   let freezed = false;
   let status: StatusType = "pending";
   let value: any;
@@ -40,23 +48,55 @@ export const PromiseLike = (
   const then = (
     fulfilledCallback?: FulfillCallback,
     rejectedCallback?: RejectCallback
-  ) => {
-    switch (status) {
-      case "fulfilled": {
-        if (!fulfilledCallback) break;
-        scheduler.enqueue(() => fulfilledCallback(value));
-        break;
+  ): PromiseLikeType => {
+    const executor: PromiseExecutor = (resolve, reject) => {
+      const onFulfilled = (resolvedValue: any, callback?: FulfillCallback) => {
+        if (!isFunction(callback)) {
+          resolve(value);
+          return;
+        }
+
+        try {
+          resolve(callback(resolvedValue));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      const onRejected = (rejectedReason: any, callback?: RejectCallback) => {
+        if (!isFunction(callback)) {
+          reject(reason);
+          return;
+        }
+
+        try {
+          resolve(callback(rejectedReason));
+        } catch (e) {
+          reject(e);
+        }
+      };
+      switch (status) {
+        case "fulfilled": {
+          scheduler.enqueue(() => onFulfilled(value, fulfilledCallback));
+          break;
+        }
+        case "rejected": {
+          scheduler.enqueue(() => onRejected(reason, rejectedCallback));
+          break;
+        }
+        case "pending":
+        default: {
+          reactions.push([
+            (resolveValue: any) => onFulfilled(resolveValue, fulfilledCallback),
+            (rejectedReason: any) =>
+              onRejected(rejectedReason, rejectedCallback)
+          ]);
+        }
       }
-      case "rejected": {
-        if (!rejectedCallback) break;
-        scheduler.enqueue(() => rejectedCallback(reason));
-        break;
-      }
-      case "pending":
-      default: {
-        reactions.push([fulfilledCallback, rejectedCallback]);
-      }
-    }
+    };
+
+    const child = PromiseLike(executor, scheduler);
+
+    return child;
   };
   const resolve = (resolvedValue?: any) => {
     if (freezed) return;
