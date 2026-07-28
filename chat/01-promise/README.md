@@ -148,8 +148,9 @@ git diff --cached --name-status
 仓库目前没有 `.nvmrc`、`.node-version` 或 `packageManager` 字段，因此新机器不能从配置文件自动恢复工具版本。本项目已实际验证过以下环境组合：
 
 ```text
-本轮 fresh verification：Node.js v22.17.1，pnpm 10.32.1
-此前 checkpoint：Node.js v24.14.0，pnpm 9.0.5
+本轮 fresh verification：Node.js v25.9.0，pnpm 9.0.5
+此前 checkpoint：Node.js v22.17.1，pnpm 10.32.1
+更早 checkpoint：Node.js v24.14.0，pnpm 9.0.5
 packages/01Promise/pnpm-lock.yaml: lockfileVersion 9.0
 ```
 
@@ -254,6 +255,7 @@ Parameters<PromiseExecutor>[1] → reject capability
 - `13f9375`：独立 child、普通值传播、recovery、handler throw、missing/non-function transparency、siblings 和多级链。
 - `616939c`：收紧 reaction/capability 类型职责，完成 L04 行为 handoff。
 - `14bca98`：开始 L05 Promise Resolution Procedure；加入共同 resolution 路径、thenable adoption、单次 `.then` 读取、getter 异常处理、递归采用与局部 once guard。
+- `29684f3`：补齐 saved `then` 调用阶段的异常处理，并用 callback/throw 竞争测试锁定 thenable-local once guard。
 
 详细阶段记录：
 
@@ -264,7 +266,7 @@ Parameters<PromiseExecutor>[1] → reject capability
 
 ### 当前测试基线
 
-当前 Promise 包共有 41 条 Vitest 测试：
+当前 Promise 包共有 44 条 Vitest 测试：
 
 | 测试组 | 数量 |
 | --- | ---: |
@@ -272,9 +274,9 @@ Parameters<PromiseExecutor>[1] → reject capability
 | Scheduler 与基础 reactions | 8 |
 | Runtime microtask | 1 |
 | Child Promise | 18 |
-| Thenable resolution | 6 |
+| Thenable resolution | 9 |
 
-2026-07-28 提交前 fresh verification 为 `41/41 passed`；新任务仍必须重新运行，不能只引用本文件。
+2026-07-28 提交前 fresh verification 为 `44/44 passed`；新任务仍必须重新运行，不能只引用本文件。
 
 ### P01-L04 收束状态
 
@@ -292,21 +294,21 @@ L04 行为与类型 REFACTOR 已通过整体审查：
 
 ### 下一步
 
-下一小步只写一条 RED 测试，不修改 `promise.ts`：
+下一小步只写一条 GREEN guard test，不修改 `promise.ts`：
 
 ```text
-rejects when calling a thenable's then method throws before either callback
+ignores a second resolve after a thenable resolves to a pending thenable
 ```
 
 要求：
 
-- 手写 thenable，其 callable `then` 在调用后、任何 callback 发生前直接抛出同一个 `reason`；
-- executor 直接 `resolve(thenable)`；
-- 构造过程不向调用者抛错，parent 最终应 rejected，且 `snapshot.reason` 与原始 `reason` 使用 `toBe`；
+- 第一个 candidate 是 pending thenable：保存 `resolveFirst`，但构造期间不调用；
+- 第二个 candidate 是带可观察 `.then` getter 的 late thenable，getter 每次读取都增加计数；
+- outer thenable 连续执行 `resolve(firstThenable)` 与 `resolve(lateThenable)`；
+- 构造完成后 parent 应保持 pending，且 late getter 的读取次数必须是 `0`；
+- 手动调用 `resolveFirst(value)` 后，parent 应 fulfilled，`snapshot.value` 与原始 `value` 使用 `toBe`，late getter 仍为 `0`；
 - 不使用 scheduler/flush；
-- 当前实现会让异常落到 executor 外层 catch，但 public capability 已锁定，因此 parent 保持 pending；正确 RED 应为原有 `41` 条通过、新测试 `1` 条失败。
-
-RED 准确后，最小 GREEN 才在现有 `then.call(...)` 周围增加调用阶段的 `try/catch`，并在 catch 中调用本次 thenable 的 `rejectOnce(error)`。不能调用 public `reject`，也不能另建一把与两个 callbacks 不共享的锁。
+- 当前实现预计直接保持 GREEN；通过后的测试总数应为 `45/45`。
 
 ### P01-L05 当前进度与边界
 
@@ -322,6 +324,9 @@ RED 准确后，最小 GREEN 才在现有 `then.call(...)` 周围增加调用阶
 - 嵌套 thenable 递归采用；
 - 每次 callable `then` 拥有独立的 resolve/reject once guard；
 - outer resolve 到 pending inner thenable 后，outer 的迟到 reject 被忽略，Promise 保持 resolved-but-pending，直到 inner 决定结果。
+- 调用保存的 `then` 在任何 callback 前抛错时，以同一个 error reject，异常不会泄漏到构造调用者；
+- outer resolve 到 pending inner thenable 后再 throw 时，迟到异常由同一个 local once guard 忽略，inner 仍可最终 fulfill parent；
+- thenable 先 reject 后再 resolve 一个带可观察 getter 的 candidate 时，迟到 candidate 的 `.then` 不会被读取。
 
 runtime 已存在但尚缺 focused test 的路径：
 
@@ -333,9 +338,8 @@ runtime 已存在但尚缺 focused test 的路径：
 
 仍未完成：
 
-- 调用保存的 `then` 在 callbacks 前抛错时 reject；
-- callback 已获胜后 `then` 再抛错时忽略迟到异常；
-- resolve/reject 多次竞争的完整对抗测试矩阵；
+- 同一个 thenable 连续调用 resolve 时，第二个 candidate 不应被读取或采用的 focused test；
+- 更完整的 resolve/reject 多次竞争矩阵；
 - child self-resolution cycle 以 `TypeError` reject；
 - 更复杂循环与 Promises/A+ conformance；
 - L05 完整阶段记录、`TASKS.md` 进度同步与最终课程复盘。
@@ -372,8 +376,8 @@ runtime 已存在但尚缺 focused test 的路径：
 [ ] 运行 node --version 与 pnpm --version，确认处于受支持版本线
 [ ] 进入 packages/01Promise
 [ ] 使用 package-local lockfile 执行 pnpm install --frozen-lockfile
-[ ] 运行 41-test baseline、typecheck 和 strict unused check
-[ ] 确认当前停在初始 thenable resolution checkpoint，尚未实现 then.call 调用异常和 self-resolution
+[ ] 运行 44-test baseline、typecheck 和 strict unused check
+[ ] 确认当前停在 then invocation exception 与 callback competition checkpoint，尚未实现 second-resolve focused test 和 self-resolution
 [ ] 从“下一步”恢复一次只做一个小任务的节奏
 ```
 
