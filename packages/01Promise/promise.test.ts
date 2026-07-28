@@ -4,7 +4,7 @@ import {
   type PromiseExecutor,
   type FulfillCallback,
   type RejectCallback,
-  type PromiseLikeType
+  type PromiseLikeType,
 } from "./promise";
 import { createTestScheduler } from "./schedule";
 
@@ -24,7 +24,7 @@ describe("MyPromise state machine", () => {
       const executor = vi.fn();
       const { getSnapshot } = PromiseLike(executor);
       expect(getSnapshot()).toEqual({
-        status: "pending"
+        status: "pending",
       });
     });
   });
@@ -62,7 +62,7 @@ describe("MyPromise state machine", () => {
       const { getSnapshot } = PromiseLike(executor);
       expect(getSnapshot()).toEqual({
         status: "fulfilled",
-        value: 42
+        value: 42,
       });
     });
 
@@ -74,7 +74,7 @@ describe("MyPromise state machine", () => {
       const { getSnapshot } = PromiseLike(executor);
       expect(getSnapshot()).toEqual({
         status: "rejected",
-        reason: 42
+        reason: 42,
       });
     });
   });
@@ -139,7 +139,7 @@ describe("MyPromise scheduler", () => {
         }),
         vi.fn(() => {
           events.push("third");
-        })
+        }),
       ];
 
       const scheduler = createTestScheduler();
@@ -163,7 +163,7 @@ describe("MyPromise scheduler", () => {
     });
     const { then } = PromiseLike(executor, scheduler);
     const value = {
-      resolved: "resolved"
+      resolved: "resolved",
     };
     const onFulfilled = vi.fn();
     then(onFulfilled);
@@ -185,7 +185,7 @@ describe("MyPromise scheduler", () => {
     });
     const { then } = PromiseLike(executor, scheduler);
     const reason = {
-      reason: "rejected"
+      reason: "rejected",
     };
     const onRejected = vi.fn();
     then(undefined, onRejected);
@@ -207,7 +207,7 @@ describe("MyPromise scheduler", () => {
     });
     const { then } = PromiseLike(executor, scheduler);
     const value = {
-      resolved: "resolved"
+      resolved: "resolved",
     };
     resolveOuter(value);
     const onFulfilled = vi.fn();
@@ -229,7 +229,7 @@ describe("MyPromise scheduler", () => {
     });
     const { then } = PromiseLike(executor, scheduler);
     const reason = {
-      reason: "reject"
+      reason: "reject",
     };
     rejectOuter(reason);
     const onRejected = vi.fn();
@@ -261,10 +261,10 @@ describe("MyPromise scheduler", () => {
       events.push("third");
     });
     const value1 = {
-      value: 1
+      value: 1,
     };
     const value2 = {
-      value: 2
+      value: 2,
     };
     then(first);
     then(second);
@@ -317,8 +317,8 @@ describe("MyPromise child Promise", () => {
     expect(child).toEqual(
       expect.objectContaining({
         then: expect.any(Function),
-        getSnapshot: expect.any(Function)
-      })
+        getSnapshot: expect.any(Function),
+      }),
     );
   });
 
@@ -343,10 +343,10 @@ describe("MyPromise child Promise", () => {
   it("propagates the fulfillment value when onFulfilled is missing after the parent is fulfilled", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     const executor = vi.fn<PromiseExecutor>((resolve) => {
       resolve(value);
@@ -366,7 +366,7 @@ describe("MyPromise child Promise", () => {
   it("propagates the rejection reason when onRejected is missing after the parent is rejected", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const reason = new Error("promise rejected");
     const executor = vi.fn<PromiseExecutor>((_, reject) => {
@@ -387,10 +387,10 @@ describe("MyPromise child Promise", () => {
   it("treats a non-function onFulfilled as missing and propagates the fulfillment value", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     const executor = vi.fn<PromiseExecutor>((resolve) => {
       resolve(value);
@@ -410,7 +410,7 @@ describe("MyPromise child Promise", () => {
   it("treats a non-function onRejected as missing and propagates the rejection reason", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const reason = new Error("promise rejected");
     const executor = vi.fn<PromiseExecutor>((_, reject) => {
@@ -431,13 +431,13 @@ describe("MyPromise child Promise", () => {
   it("fulfills the child with the ordinary value returned by onFulfilled", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     const childResult = {
-      value: "childValue"
+      value: "childValue",
     };
     const executor = vi.fn<PromiseExecutor>((resolve) => {
       resolve(value);
@@ -461,11 +461,11 @@ describe("MyPromise child Promise", () => {
   it("fulfills the child with the ordinary value returned by onRejected", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const reason = new Error("rejected");
     const recoveryResult = {
-      value: "childValue"
+      value: "childValue",
     };
     const executor = vi.fn<PromiseExecutor>((_, reject) => {
       reject(reason);
@@ -489,10 +489,10 @@ describe("MyPromise child Promise", () => {
   it("rejects the child with the exact error thrown by onFulfilled", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     const recoveryError = new Error("child rejected");
     const executor = vi.fn<PromiseExecutor>((resolve) => {
@@ -519,7 +519,7 @@ describe("MyPromise child Promise", () => {
   it("rejects the child with the exact error thrown by onRejected", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const reason = new Error("parent error");
     const recoveryError = new Error("child rejected");
@@ -547,13 +547,13 @@ describe("MyPromise child Promise", () => {
   it("fulfills the child with the handler result when onFulfilled was registered while pending", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     const childResult = {
-      value: "childValue"
+      value: "childValue",
     };
     let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
     const executor = vi.fn<PromiseExecutor>((resolve) => {
@@ -581,11 +581,11 @@ describe("MyPromise child Promise", () => {
   it("fulfills the child with the handler result when onRejected was registered while pending", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const parentError = new Error("parent error");
     const childResult = {
-      value: "childValue"
+      value: "childValue",
     };
     let rejectOuter: Parameters<PromiseExecutor>[1] = () => {};
     const executor = vi.fn<PromiseExecutor>((_, reject) => {
@@ -613,13 +613,13 @@ describe("MyPromise child Promise", () => {
   it("settles sibling children independently from their own handler outcomes", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     const childAResult = {
-      value: "childValue"
+      value: "childValue",
     };
     const childBError = new Error("child error");
     let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
@@ -664,10 +664,10 @@ describe("MyPromise child Promise", () => {
   it("runs only onFulfilled when a pending parent is fulfilled", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
     const executor = vi.fn<PromiseExecutor>((resolve) => {
@@ -693,10 +693,10 @@ describe("MyPromise child Promise", () => {
   it("runs only onRejected when a pending parent is rejected", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     let rejectOuter: Parameters<PromiseExecutor>[1] = () => {};
     const executor = vi.fn<PromiseExecutor>((_, reject) => {
@@ -722,23 +722,23 @@ describe("MyPromise child Promise", () => {
   it("settles one chain link per queued reaction when flushed step by step", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
     const executor = vi.fn<PromiseExecutor>((resolve) => {
       resolveOuter = resolve;
     });
     const result1 = {
-      value: "result1"
+      value: "result1",
     };
     const result2 = {
-      value: "result2"
+      value: "result2",
     };
     const result3 = {
-      value: "result3"
+      value: "result3",
     };
     const fn1 = vi.fn<FulfillCallback>(() => result1);
     const fn2 = vi.fn<FulfillCallback>(() => result2);
@@ -753,7 +753,7 @@ describe("MyPromise child Promise", () => {
       child: PromiseLikeType,
       fn: Mock<FulfillCallback>,
       value: any,
-      parameter: any
+      parameter: any,
     ) => {
       const snapshot = child.getSnapshot();
       if (snapshot.status !== "fulfilled") {
@@ -792,10 +792,10 @@ describe("MyPromise child Promise", () => {
   it("propagates the fulfillment value when onFulfilled was missing while the parent was pending", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
     const executor = vi.fn<PromiseExecutor>((resolve) => {
@@ -804,11 +804,11 @@ describe("MyPromise child Promise", () => {
     const parent = PromiseLike(executor, scheduler);
     const child = parent.then();
     expect(child.getSnapshot()).toEqual({
-      status: "pending"
+      status: "pending",
     });
     resolveOuter(value);
     expect(child.getSnapshot()).toEqual({
-      status: "pending"
+      status: "pending",
     });
     testScheduler.flushNext();
     const snapshot = child.getSnapshot();
@@ -822,7 +822,7 @@ describe("MyPromise child Promise", () => {
   it("propagates the rejection reason when onRejected is missing before the parent is rejected", () => {
     const testScheduler = createTestScheduler();
     const scheduler = {
-      enqueue: testScheduler.enqueue
+      enqueue: testScheduler.enqueue,
     };
     const reason = new Error("rejected");
     let rejectOuter: Parameters<PromiseExecutor>[1] = () => {};
@@ -832,11 +832,11 @@ describe("MyPromise child Promise", () => {
     const parent = PromiseLike(executor, scheduler);
     const child = parent.then();
     expect(child.getSnapshot()).toEqual({
-      status: "pending"
+      status: "pending",
     });
     rejectOuter(reason);
     expect(child.getSnapshot()).toEqual({
-      status: "pending"
+      status: "pending",
     });
     testScheduler.flushNext();
     const snapshot = child.getSnapshot();
@@ -853,7 +853,7 @@ describe("MyPromise thenable", () => {
     const testScheduler = createTestScheduler();
     const scheduler = { enqueue: testScheduler.enqueue };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     const executor = vi.fn<PromiseExecutor>((resolve) => {
       resolve();
@@ -861,7 +861,7 @@ describe("MyPromise thenable", () => {
     const thenable = {
       then(resolve: Parameters<PromiseExecutor>[0]) {
         resolve(value);
-      }
+      },
     };
     const parent = PromiseLike(executor, scheduler);
     const child = parent.then(() => thenable);
@@ -879,12 +879,12 @@ describe("MyPromise thenable", () => {
     const testScheduler = createTestScheduler();
     const scheduler = { enqueue: testScheduler.enqueue };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     const thenable = {
       then(resolve: Parameters<PromiseExecutor>[0]) {
         resolve(value);
-      }
+      },
     };
     const executor = vi.fn<PromiseExecutor>((resolve) => {
       resolve(thenable);
@@ -902,7 +902,7 @@ describe("MyPromise thenable", () => {
     const testScheduler = createTestScheduler();
     const scheduler = { enqueue: testScheduler.enqueue };
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     let thenReadTimes = 0;
     const thenable = {
@@ -912,7 +912,7 @@ describe("MyPromise thenable", () => {
         return (resolve: Parameters<PromiseExecutor>[0]) => {
           resolve(value);
         };
-      }
+      },
     };
     const executor = vi.fn<PromiseExecutor>((resolve) => {
       resolve(thenable);
@@ -946,7 +946,7 @@ describe("MyPromise thenable", () => {
     const thenable = {
       get then() {
         throw reason;
-      }
+      },
     };
     const executor = vi.fn<PromiseExecutor>((resolve) => {
       resolve(thenable);
@@ -963,7 +963,7 @@ describe("MyPromise thenable", () => {
   it("ignores rejection after a thenable resolves to a pending thenable", () => {
     const laterReason = new Error("latter rejection");
     const value = {
-      value: "resolved"
+      value: "resolved",
     };
     let resolveInner: Parameters<PromiseExecutor>[0] = () => {};
     const innerThenable = {
@@ -971,18 +971,18 @@ describe("MyPromise thenable", () => {
         return (resolve: Parameters<PromiseExecutor>[0]) => {
           resolveInner = resolve;
         };
-      }
+      },
     };
     const outerThenable = {
       get then() {
         return (
           resolve: Parameters<PromiseExecutor>[0],
-          reject: Parameters<PromiseExecutor>[1]
+          reject: Parameters<PromiseExecutor>[1],
         ) => {
           resolve(innerThenable);
           reject(laterReason);
         };
-      }
+      },
     };
     const executor = vi.fn<PromiseExecutor>((resolve) => {
       resolve(outerThenable);
@@ -996,5 +996,99 @@ describe("MyPromise thenable", () => {
     }
     expect(snapshot.status).toBe("fulfilled");
     expect(snapshot.value).toBe(value);
+  });
+
+  it("rejects when calling a thenable's then method throws before either callback", () => {
+    const reason = new Error("then method error");
+    const thenable = {
+      get then() {
+        return () => {
+          throw reason;
+        };
+      },
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(thenable);
+    });
+    const parent = PromiseLike(executor);
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error("parent status should be 'rejected'");
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(reason);
+  });
+
+  it("keeps the fulfillment value when a thenable throws after calling resolve", () => {
+    const reason = new Error("then method error");
+    const value = {
+      value: "resolved",
+    };
+    let innerResolve: Parameters<PromiseExecutor>[0] = () => {};
+    const innerThenable = {
+      get then() {
+        return (resolve: Parameters<PromiseExecutor>[0]) => {
+          innerResolve = resolve;
+        };
+      },
+    };
+    const thenable = {
+      get then() {
+        return (resolve: Parameters<PromiseExecutor>[0]) => {
+          resolve(innerThenable);
+          throw reason;
+        };
+      },
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(thenable);
+    });
+    const parent = PromiseLike(executor);
+    expect(parent.getSnapshot().status).toBe("pending");
+    innerResolve(value);
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error("parent status should be 'fulfilled'");
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(value);
+  });
+
+  it("ignores resolve after a thenable calls reject", () => {
+    const reason = new Error("then method error");
+    const value = {
+      value: "resolved",
+    };
+    let thenReadTimes = 0;
+    const innerThenable = {
+      get then() {
+        thenReadTimes++;
+        return (resolve: Parameters<PromiseExecutor>[0]) => {
+          resolve(value);
+        };
+      },
+    };
+    const thenable = {
+      get then() {
+        return (
+          resolve: Parameters<PromiseExecutor>[0],
+          reject: Parameters<PromiseExecutor>[1],
+        ) => {
+          reject(reason);
+          resolve(innerThenable);
+        };
+      },
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(thenable);
+    });
+    const parent = PromiseLike(executor);
+    expect(thenReadTimes).toBe(0);
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error("parent status should be 'rejected'");
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(reason);
   });
 });

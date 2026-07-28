@@ -5,7 +5,7 @@ export type ResolveCapability = (value?: any) => void;
 export type RejectCapability = (reason?: any) => void;
 export type PromiseExecutor = (
   resolve: ResolveCapability,
-  reject: RejectCapability
+  reject: RejectCapability,
 ) => void;
 export type PendStatus = {
   status: "pending";
@@ -27,14 +27,14 @@ export type RejectCallback = (reason?: any) => any;
 export type PromiseLikeType = {
   then: (
     fulfilledCallback?: FulfillCallback,
-    rejectedCallback?: RejectCallback
+    rejectedCallback?: RejectCallback,
   ) => PromiseLikeType;
   getSnapshot: () => State;
 };
 
 export const PromiseLike = (
   executor: PromiseExecutor,
-  scheduler: Scheduler = runtimeScheduler
+  scheduler: Scheduler = runtimeScheduler,
 ): PromiseLikeType => {
   let capabilityLocked = false;
   let status: StatusType = "pending";
@@ -49,7 +49,7 @@ export const PromiseLike = (
 
   const then = (
     fulfilledCallback?: FulfillCallback,
-    rejectedCallback?: RejectCallback
+    rejectedCallback?: RejectCallback,
   ): PromiseLikeType => {
     const executor: PromiseExecutor = (resolve, reject) => {
       const onFulfilled = (resolvedValue: any, callback?: FulfillCallback) => {
@@ -90,7 +90,7 @@ export const PromiseLike = (
           reactions.push([
             (resolveValue: any) => onFulfilled(resolveValue, fulfilledCallback),
             (rejectedReason: any) =>
-              onRejected(rejectedReason, rejectedCallback)
+              onRejected(rejectedReason, rejectedCallback),
           ]);
         }
       }
@@ -151,7 +151,11 @@ export const PromiseLike = (
     }
 
     if (isFunction(then)) {
-      then.call(candidate, resolveOnce, rejectOnce);
+      try {
+        then.call(candidate, resolveOnce, rejectOnce);
+      } catch (error) {
+        rejectOnce(error);
+      }
       return;
     }
 
@@ -177,19 +181,19 @@ export const PromiseLike = (
       case "fulfilled": {
         return {
           status,
-          value
+          value,
         };
       }
       case "rejected": {
         return {
           status,
-          reason
+          reason,
         };
       }
       case "pending":
       default: {
         return {
-          status
+          status,
         };
       }
     }
@@ -203,6 +207,6 @@ export const PromiseLike = (
 
   return {
     getSnapshot,
-    then
+    then,
   };
 };
