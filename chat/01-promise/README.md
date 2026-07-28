@@ -2,7 +2,7 @@
 
 > 用途：在新机器、新 Codex 任务或上下文丢失后，恢复当前 Promise 学习项目的协作纪律、验证方式和准确进度。
 >
-> 最后更新：2026-07-27
+> 最后更新：2026-07-28
 
 ## 新任务启动方式
 
@@ -145,15 +145,15 @@ git diff --cached --name-status
 
 ## 换机器运行环境
 
-仓库目前没有 `.nvmrc`、`.node-version` 或 `packageManager` 字段，因此新机器不能从配置文件自动恢复工具版本。当前已验证环境是：
+仓库目前没有 `.nvmrc`、`.node-version` 或 `packageManager` 字段，因此新机器不能从配置文件自动恢复工具版本。本项目已实际验证过以下环境组合：
 
 ```text
-Node.js v24.14.0
-pnpm 9.0.5
+本轮 fresh verification：Node.js v22.17.1，pnpm 10.32.1
+此前 checkpoint：Node.js v24.14.0，pnpm 9.0.5
 packages/01Promise/pnpm-lock.yaml: lockfileVersion 9.0
 ```
 
-当前 TypeScript/Vitest 依赖的 Node engine 交集要求使用 Node 20.19+（20.x）、Node 22.12+（22.x）或 Node 24+；换机时优先复现上面的已验证版本或同一受支持版本线。开始排查项目代码前先运行：
+当前 TypeScript/Vitest 依赖的 Node engine 交集要求使用 Node 20.19+（20.x）、Node 22.12+（22.x）或 Node 24+；换机时优先复现上面的任一已验证组合或同一受支持版本线。开始排查项目代码前先运行：
 
 ```bash
 node --version
@@ -167,6 +167,8 @@ pnpm install --frozen-lockfile
 ```
 
 如果 Node/pnpm 版本不兼容，测试工具可能在加载项目代码前就失败；应先解决环境问题，不能把这类启动错误判断为 Promise 实现 bug。
+
+本轮所在 Mac 的 shell `PATH` 前部残留了旧 fnm multishell，默认 `node` 可能解析为 `v12.13.0`。其表现是 pnpm 10 在加载阶段因 optional chaining 报语法错误，或 Vitest 在项目测试开始前失败。本轮验证通过显式选择 Node `v22.17.1` 并确保 pnpm 子进程继承同一 `PATH` 完成。换机后应使用 `fnm use` 或等价版本管理方式修正整个 shell 的 Node，而不是长期复制本机绝对路径。
 
 当前 Mac 的 shell 初始化偶尔会打印：
 
@@ -183,11 +185,22 @@ operation not permitted: ps
 
 ```text
 executor 调用       → 构造期间同步执行
-resolve/reject      → 同步决定 Promise settlement
+resolve/reject      → 同步锁定首次 resolution request，可能继续采用 thenable
 reaction handler    → 由 scheduler job 异步执行
 ```
 
-`resolve` / `reject` 不是“立即运行 handlers”；它们决定状态并安排对应 reaction jobs。
+`resolve` / `reject` 不是“立即运行 handlers”。普通值会同步进入终态并安排对应 reaction jobs；resolve 到 pending thenable 时结果已锁定，但状态仍可保持 pending。
+
+### Resolved 不等于 Settled
+
+```text
+public resolve(pendingThenable)
+  → public capability 立即锁定，迟到的 public reject 被忽略
+  → Promise status 仍是 pending
+  → inner thenable 稍后决定 fulfilled 或 rejected
+```
+
+外层 capability lock 保护 executor/public resolution request；每次外部 thenable 的局部 once guard 保护该次 `then(resolveOnce, rejectOnce)` 的 callback 竞争。两把锁不能复用。
 
 ### Test scheduler 不属于 Promise API
 
@@ -213,13 +226,15 @@ parent settlement
 - 每次 `then` 创建独立 child；siblings 不共享 settlement capability；
 - 多级链每个 scheduler job 推进一层。
 
-### 三类函数不可混用
+### 六类函数不可混用
 
 | 角色 | 输入 | 返回值语义 | 当前类型方向 |
 | --- | --- | --- | --- |
 | executor resolve/reject capability | value/reason | 忽略，返回 `void` | `ResolveCapability` / `RejectCapability` |
 | public `then` handler | value/reason | 决定 child | `FulfillCallback` / `RejectCallback` |
 | internal reaction runner | settlement payload | 内部结算 child，返回 `void` | `ReactionRunner` |
+| internal resolution/final settlement | candidate/reason | 采用 thenable 或写入终态 | `innerResolve` / `innerReject` / `finalFulfill` / `finalReject` |
+| thenable-local guarded callbacks | value/reason | 本次 `then` 只有第一个 callback 获胜 | `resolveOnce` / `rejectOnce` |
 | scheduler job | 无参数 | 只负责延迟执行 | `Job = () => void` |
 
 TypeScript 的结构兼容不代表语义角色相同。测试保存 executor 参数时使用：
@@ -237,6 +252,8 @@ Parameters<PromiseExecutor>[1] → reject capability
 
 - `1fc9b22`：状态机、first-settlement latch、reaction queue、test/runtime scheduler。
 - `13f9375`：独立 child、普通值传播、recovery、handler throw、missing/non-function transparency、siblings 和多级链。
+- `616939c`：收紧 reaction/capability 类型职责，完成 L04 行为 handoff。
+- `14bca98`：开始 L05 Promise Resolution Procedure；加入共同 resolution 路径、thenable adoption、单次 `.then` 读取、getter 异常处理、递归采用与局部 once guard。
 
 详细阶段记录：
 
@@ -247,7 +264,7 @@ Parameters<PromiseExecutor>[1] → reject capability
 
 ### 当前测试基线
 
-当前 Promise 包共有 35 条 Vitest 测试：
+当前 Promise 包共有 41 条 Vitest 测试：
 
 | 测试组 | 数量 |
 | --- | ---: |
@@ -255,58 +272,73 @@ Parameters<PromiseExecutor>[1] → reject capability
 | Scheduler 与基础 reactions | 8 |
 | Runtime microtask | 1 |
 | Child Promise | 18 |
+| Thenable resolution | 6 |
 
-最近验证目标是 `35/35 passed`，但新任务仍必须重新运行，不能只引用本文件。
+2026-07-28 提交前 fresh verification 为 `41/41 passed`；新任务仍必须重新运行，不能只引用本文件。
 
-### 当前 L04 REFACTOR 状态
+### P01-L04 收束状态
 
-行为 GREEN 已完成，正在收紧类型和内部职责：
+L04 行为与类型 REFACTOR 已通过整体审查：
 
 - `Reaction` 已从可选 public callbacks 改为两个必有的 internal `ReactionRunner`；
 - settlement loop 已删除恒真的存在性检查，并使用 `runFulfilled` / `runRejected`；
 - `PromiseExecutor` 已使用独立 `ResolveCapability` / `RejectCapability`；
 - 旧测试已统一使用 `Parameters<PromiseExecutor>[0/1]` 保存 capability；
 - missing-handler transparency 已改为使用 runner 参数，不再重新读取外层 parent `value` / `reason`；
+- `isFunction` 已使用文件内部、具有明确调用签名的 `Callable` predicate，不再使用全局 `Function`；
 - `ResolveCapability` / `RejectCapability` 当前被导出，这是可选公共 API 决定，不是测试需要；以后可选择去掉 `export`。
 
-`TASKS.md` 中 P01-L04 暂时保持未勾选，直到本轮 REFACTOR 收束并再次完成整体审查。
+`TASKS.md` 中 P01-L04 目前仍未勾选；这是尚未同步的课程进度文档项，不代表 L04 代码仍有 Required 问题。
 
 ### 下一步
 
-下一小步只收紧 `packages/01Promise/utils.ts` 中 `isFunction` 的类型谓词：
+下一小步只写一条 RED 测试，不修改 `promise.ts`：
 
 ```text
-当前：value is Function
-目标：使用一个内部、具有明确调用签名的 Callable 类型
+rejects when calling a thenable's then method throws before either callback
 ```
 
 要求：
 
-- `value` 输入继续使用 `unknown`；
-- runtime 仍使用 `typeof value === "function"`；
-- `Callable` 不导出；
-- 不修改 Promise runtime、测试或 thenable 行为；
-- 这是纯类型 REFACTOR，使用现有 35 tests 作为安全网。
+- 手写 thenable，其 callable `then` 在调用后、任何 callback 发生前直接抛出同一个 `reason`；
+- executor 直接 `resolve(thenable)`；
+- 构造过程不向调用者抛错，parent 最终应 rejected，且 `snapshot.reason` 与原始 `reason` 使用 `toBe`；
+- 不使用 scheduler/flush；
+- 当前实现会让异常落到 executor 外层 catch，但 public capability 已锁定，因此 parent 保持 pending；正确 RED 应为原有 `41` 条通过、新测试 `1` 条失败。
 
-边界说明：`typeof class Example {} === "function"`，但 class constructor 不能普通调用。用户态 `typeof` 不等价于规范内部的 `IsCallable`；当前课程接受这个边界，不扩展 class 检测。
+RED 准确后，最小 GREEN 才在现有 `then.call(...)` 周围增加调用阶段的 `try/catch`，并在 catch 中调用本次 thenable 的 `rejectOnce(error)`。不能调用 public `reject`，也不能另建一把与两个 callbacks 不共享的锁。
 
-### 明确保留给 P01-L05
+### P01-L05 当前进度与边界
 
-当前 child `resolve` 会把 handler 返回的 PromiseLike/native Promise/thenable 当作普通值直接 fulfill。尚未实现：
+`14bca98` 已开始实现共同的 Promise Resolution Procedure。两个入口现在共享同一条路径：executor 直接 `resolve(x)`，以及 handler return 触发的 child `resolve(x)`。
 
-Promise Resolution Procedure 最终要覆盖两个入口：executor 直接调用 `resolve(thenable)`，以及 handler 返回 thenable 后触发的 child `resolve(thenable)`。
+已经实现并由当前测试覆盖：
 
-- thenable assimilation；
-- 只读取一次 `.then`；
-- then getter 抛错；
-- 以 thenable 为 `this` 调用保存的 `then`；
-- thenable resolve/reject 的局部 once guard；
-- resolve 后 reject、resolve 后 throw；
-- 嵌套 thenable 递归解析；
-- child self-resolution cycle；
-- resolved-but-still-pending 的锁定状态。
+- public capability lock 与 internal resolution/final settlement 分层；
+- handler 返回手写 thenable、executor 直接 resolve thenable 时采用其最终值；
+- `.then` 只读取一次，保存后以 candidate 为 `this` 调用；
+- `null` 作为普通值 fulfilled；
+- `.then` getter 抛错时以同一 error rejected；
+- 嵌套 thenable 递归采用；
+- 每次 callable `then` 拥有独立的 resolve/reject once guard；
+- outer resolve 到 pending inner thenable 后，outer 的迟到 reject 被忽略，Promise 保持 resolved-but-pending，直到 inner 决定结果。
 
-不要在 L04 的类型 REFACTOR 中顺手实现这些内容。P01-L05 应从一条能准确 RED 的 thenable adoption 测试开始。
+runtime 已存在但尚缺 focused test 的路径：
+
+- `.then` 不可调用时把整个对象当普通值 fulfill；
+- function-shaped thenable；
+- 保存的 `then` 确实以 candidate 为 `this`；
+- thenable 直接返回但不调用 callbacks 时保持 pending；
+- 普通值 resolve 后的迟到 reject 被终态 guard 忽略。
+
+仍未完成：
+
+- 调用保存的 `then` 在 callbacks 前抛错时 reject；
+- callback 已获胜后 `then` 再抛错时忽略迟到异常；
+- resolve/reject 多次竞争的完整对抗测试矩阵；
+- child self-resolution cycle 以 `TypeError` reject；
+- 更复杂循环与 Promises/A+ conformance；
+- L05 完整阶段记录、`TASKS.md` 进度同步与最终课程复盘。
 
 ## Git 纪律
 
@@ -340,8 +372,8 @@ Promise Resolution Procedure 最终要覆盖两个入口：executor 直接调用
 [ ] 运行 node --version 与 pnpm --version，确认处于受支持版本线
 [ ] 进入 packages/01Promise
 [ ] 使用 package-local lockfile 执行 pnpm install --frozen-lockfile
-[ ] 运行 35-test baseline、typecheck 和 strict unused check
-[ ] 确认没有误入 thenable resolution
+[ ] 运行 41-test baseline、typecheck 和 strict unused check
+[ ] 确认当前停在初始 thenable resolution checkpoint，尚未实现 then.call 调用异常和 self-resolution
 [ ] 从“下一步”恢复一次只做一个小任务的节奏
 ```
 
