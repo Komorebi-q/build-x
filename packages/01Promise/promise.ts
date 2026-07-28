@@ -36,7 +36,7 @@ export const PromiseLike = (
   executor: PromiseExecutor,
   scheduler: Scheduler = runtimeScheduler
 ): PromiseLikeType => {
-  let freezed = false;
+  let capabilityLocked = false;
   let status: StatusType = "pending";
   let value: any;
   let reason: any;
@@ -100,33 +100,77 @@ export const PromiseLike = (
 
     return child;
   };
-  const resolve: ResolveCapability = (resolvedValue?: any) => {
-    if (freezed) return;
-
+  const finalFulfill = (finalValue: any) => {
+    if (status !== "pending") return;
     status = "fulfilled";
-    value = resolvedValue;
-    freezed = true;
+    value = finalValue;
 
     for (const reaction of reactions) {
       const [runFulfilled] = reaction;
-      scheduler.enqueue(() => runFulfilled(resolvedValue));
+      scheduler.enqueue(() => runFulfilled(finalValue));
     }
 
     clearReactions();
   };
-  const reject: RejectCapability = (rejectedReason?: any) => {
-    if (freezed) return;
-
+  const finalReject = (finalReason: any) => {
+    if (status !== "pending") return;
     status = "rejected";
-    reason = rejectedReason;
-    freezed = true;
+    reason = finalReason;
 
     for (const reaction of reactions) {
       const [, runRejected] = reaction;
-      scheduler.enqueue(() => runRejected(rejectedReason));
+      scheduler.enqueue(() => runRejected(finalReason));
     }
 
     clearReactions();
+  };
+  const innerResolve = (candidate: any) => {
+    let called = false;
+    const resolveOnce = (value: any) => {
+      if (called) return;
+      called = true;
+      innerResolve(value);
+    };
+    const rejectOnce = (reason: any) => {
+      if (called) return;
+      called = true;
+      innerReject(reason);
+    };
+
+    // `.then` may be an observable getter, so read, validate, and invoke the
+    // same saved value once while preserving `candidate` as its `this` value.
+    let then: unknown;
+    try {
+      then =
+        candidate !== null && ["object", "function"].includes(typeof candidate)
+          ? candidate.then
+          : null;
+    } catch (error) {
+      rejectOnce(error);
+      return;
+    }
+
+    if (isFunction(then)) {
+      then.call(candidate, resolveOnce, rejectOnce);
+      return;
+    }
+
+    finalFulfill(candidate);
+  };
+  const innerReject = (reason: any) => {
+    finalReject(reason);
+  };
+  const resolve: ResolveCapability = (resolvedValue?: any) => {
+    if (capabilityLocked) return;
+
+    capabilityLocked = true;
+    innerResolve(resolvedValue);
+  };
+  const reject: RejectCapability = (rejectedReason?: any) => {
+    if (capabilityLocked) return;
+
+    capabilityLocked = true;
+    innerReject(rejectedReason);
   };
   const getSnapshot = (): State => {
     switch (status) {

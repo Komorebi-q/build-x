@@ -847,3 +847,154 @@ describe("MyPromise child Promise", () => {
     expect(snapshot.reason).toBe(reason);
   });
 });
+
+describe("MyPromise thenable", () => {
+  it("adopts the fulfilled value of a thenable returned by onFulfilled", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = { enqueue: testScheduler.enqueue };
+    const value = {
+      value: "resolved"
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve();
+    });
+    const thenable = {
+      then(resolve: Parameters<PromiseExecutor>[0]) {
+        resolve(value);
+      }
+    };
+    const parent = PromiseLike(executor, scheduler);
+    const child = parent.then(() => thenable);
+    expect(child.getSnapshot().status).toBe("pending");
+    testScheduler.flushNext();
+    const snapshot = child.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error("child status should be 'fulfilled'");
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(value);
+  });
+
+  it("adopts the fulfilled value of a thenable passed directly to resolve", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = { enqueue: testScheduler.enqueue };
+    const value = {
+      value: "resolved"
+    };
+    const thenable = {
+      then(resolve: Parameters<PromiseExecutor>[0]) {
+        resolve(value);
+      }
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(thenable);
+    });
+    const parent = PromiseLike(executor, scheduler);
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error("parent status should be 'fulfilled'");
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(value);
+  });
+
+  it("reads a thenable's then property only once", () => {
+    const testScheduler = createTestScheduler();
+    const scheduler = { enqueue: testScheduler.enqueue };
+    const value = {
+      value: "resolved"
+    };
+    let thenReadTimes = 0;
+    const thenable = {
+      get then() {
+        thenReadTimes++;
+
+        return (resolve: Parameters<PromiseExecutor>[0]) => {
+          resolve(value);
+        };
+      }
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(thenable);
+    });
+    const parent = PromiseLike(executor, scheduler);
+    testScheduler.flushNext();
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error("parent status should be 'fulfilled'");
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(value);
+    expect(thenReadTimes).toBe(1);
+  });
+
+  it("treats null as an ordinary fulfillment value", () => {
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(null);
+    });
+    const parent = PromiseLike(executor);
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error("parent status should be 'fulfilled'");
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(null);
+  });
+
+  it("rejects with the error thrown by a thenable's then getter", () => {
+    const reason = new Error("then getter error");
+    const thenable = {
+      get then() {
+        throw reason;
+      }
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(thenable);
+    });
+    const parent = PromiseLike(executor);
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error("parent status should be 'rejected'");
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(reason);
+  });
+
+  it("ignores rejection after a thenable resolves to a pending thenable", () => {
+    const laterReason = new Error("latter rejection");
+    const value = {
+      value: "resolved"
+    };
+    let resolveInner: Parameters<PromiseExecutor>[0] = () => {};
+    const innerThenable = {
+      get then() {
+        return (resolve: Parameters<PromiseExecutor>[0]) => {
+          resolveInner = resolve;
+        };
+      }
+    };
+    const outerThenable = {
+      get then() {
+        return (
+          resolve: Parameters<PromiseExecutor>[0],
+          reject: Parameters<PromiseExecutor>[1]
+        ) => {
+          resolve(innerThenable);
+          reject(laterReason);
+        };
+      }
+    };
+    const executor = vi.fn<PromiseExecutor>((resolve) => {
+      resolve(outerThenable);
+    });
+    const parent = PromiseLike(executor);
+    expect(parent.getSnapshot().status).toBe("pending");
+    resolveInner(value);
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error("parent status should be 'fulfilled'");
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(value);
+  });
+});
