@@ -18,8 +18,10 @@
 - chat/01-promise/README.md
 - learning-records/0001-promise-state-reactions-and-scheduling.md
 - learning-records/0002-promise-child-chaining-and-propagation.md
+- learning-records/0003-promise-resolution-locks-and-guard-scope.md
 - packages/01Promise/PHASE-1.md
 - packages/01Promise/PHASE-2.md
+- packages/01Promise/PHASE-3.md
 
 然后检查 packages/01Promise 的当前实现、测试、git status 和最近提交。
 遵循 playbook：我亲自写练习源码和测试；你负责讲解、拆解、审阅、验证与复盘。每次只给一个最小任务，不要直接替我实现。先报告当前精确状态，再从 README 记录的“下一步”继续。
@@ -266,17 +268,20 @@ Parameters<PromiseExecutor>[1] → reject capability
 - `29684f3`：补齐 saved `then` 调用阶段的异常处理，并用 callback/throw 竞争测试锁定 thenable-local once guard。
 - `0f4121c`：更新 handoff 与本文件，把 L05 已覆盖的 thenable 行为与遗留项写进 playbook。
 - `27cfbcc`：补上 L05 剩余的 focused test，形成 51 条基线，并加入 `self === candidate` 的 `TypeError` 守卫。
+- 本轮提交（L05 收束）：三条 guard test 锁定 public capability 双向竞争与 local guard 作用域，形成 54 条基线，并补上 `PHASE-3.md`、学习记录 0003 与 `TASKS.md` 进度同步。
 
 详细阶段记录：
 
 - `packages/01Promise/PHASE-1.md`
 - `packages/01Promise/PHASE-2.md`
+- `packages/01Promise/PHASE-3.md`
 - `learning-records/0001-promise-state-reactions-and-scheduling.md`
 - `learning-records/0002-promise-child-chaining-and-propagation.md`
+- `learning-records/0003-promise-resolution-locks-and-guard-scope.md`
 
 ### 当前测试基线
 
-当前 Promise 包共有 51 条 Vitest 测试：
+当前 Promise 包共有 54 条 Vitest 测试：
 
 | 测试组 | 数量 |
 | --- | ---: |
@@ -284,9 +289,11 @@ Parameters<PromiseExecutor>[1] → reject capability
 | Scheduler 与基础 reactions | 8 |
 | Runtime microtask | 1 |
 | Child Promise | 18 |
-| Thenable resolution | 16 |
+| Thenable resolution | 19 |
 
-2026-09-28 提交前 fresh verification（Node.js v25.9.0、pnpm 9.0.5）为 `51/51 passed`，`pnpm typecheck` 与 `tsc --noEmit --noUnusedLocals --noUnusedParameters` 退出码均为 `0`；新任务仍必须重新运行，不能只引用本文件。
+2026-09-28 提交前 fresh verification（Node.js v26.10.0、pnpm 12.6.0）为 `54/54 passed`，`pnpm typecheck` 与 `tsc --noEmit --noUnusedLocals --noUnusedParameters` 退出码均为 `0`；新任务仍必须重新运行，不能只引用本文件。
+
+注意 `noUnusedParameters` 不属于 `strict`：本轮曾出现 `vitest` 与 `pnpm typecheck` 同时为绿、而 strict unused 命令报 `TS6133` 的情况。两个命令必须都跑，不能用其中一个代替另一个。
 
 ### P01-L04 收束状态
 
@@ -300,26 +307,24 @@ L04 行为与类型 REFACTOR 已通过整体审查：
 - `isFunction` 已使用文件内部、具有明确调用签名的 `Callable` predicate，不再使用全局 `Function`；
 - `ResolveCapability` / `RejectCapability` 当前被导出，这是可选公共 API 决定，不是测试需要；以后可选择去掉 `export`。
 
-`TASKS.md` 中 P01-L04 目前仍未勾选；这是尚未同步的课程进度文档项，不代表 L04 代码仍有 Required 问题。
+`TASKS.md` 中 P01-L04 已随本轮 L05 收束一起勾选。P01-L01 的勾选状态尚未核对，不代表 L01 一定有 Required 问题。
 
 ### 下一步
 
-L05 剩下的最大缺口是 **public capability 与 thenable callback 的双向竞争**。下一小步仍只写一条 GREEN guard test，不修改 `promise.ts`：
+L05 已收束：三处竞争都有可执行判别证据，阶段记录写在 `packages/01Promise/PHASE-3.md`。下一小步进入 **P01-L06 · 用微任务对齐原生 Promise 调度**，仍然一次只做一个小任务，且只写测试、不改 `promise.ts`。
 
 ```text
-ignores public reject after resolve locked onto a thenable
+observe the ordering of handwritten vs native handlers after synchronous code
 ```
 
 要求：
 
-- executor 先 `resolve(pendingThenable)`：该 thenable 只保存 inner `resolve` / `reject`，构造期间不调用；
-- 随后在同一个 executor 内调用 public `reject(lateReason)`；
-- 断言 public reject 被 capability lock 忽略：parent 仍是 pending，没有写入任何终态；
-- 手动调用 inner `resolve(value)` 后 parent 才 fulfilled，`snapshot.value` 与原始 `value` 使用 `toBe`；
-- 不使用 scheduler/flush；
-- 当前实现预计直接保持 GREEN；通过后的测试总数应为 `52/52`。
+- 使用默认 runtime scheduler，不注入 test scheduler，不调用 `flushNext()`；
+- 断言**整条 log 序列**，而不是"handler 被调用过"；
+- 至少覆盖两种注册时机：同步 resolve 后注册，以及与原生 Promise 交替注册；
+- 预期会出现与原生不一致的顺序；若结果反而一致，先记录现象再解释原因，不要立刻改实现。
 
-紧接的同族反向 guard test 是：executor 先 `reject(publicReason)` 再 `resolve(lateThenable)`，断言 parent 立即 rejected、`snapshot.reason` 与 `publicReason` 使用 `toBe`，且 lateThenable 的 `.then` getter 读取次数为 `0`。
+L05 的开放问题（环形 thenable 的处置策略、深层嵌套是否静默吞掉 `RangeError`、Promises/A+ 套件）已登记在 `PHASE-3.md` 的"已知债务与边界"，不要混入 L06。
 
 ### P01-L05 当前进度与边界
 
@@ -348,12 +353,19 @@ ignores public reject after resolve locked onto a thenable
 - 同一个 thenable 连续 resolve 到 pending thenable 时，第二个 candidate 不会被读取；
 - `self === candidate` 的判定放在读取 `.then` 之前，因此 `resolve(self)` 与 handler 返回自己的 child 都直接以 `TypeError` reject，不会递归读取自身。
 
-仍未完成：
+本轮已完成：
 
-- public capability 与 thenable callback 的双向竞争（public reject after `resolve(thenable)`、public reject before late `resolve(thenable)`）；
-- 更完整的 resolve/reject 多次竞争矩阵；
-- 更复杂循环（例如 thenable 链自引用）与 Promises/A+ conformance suite（如 `promises-aplus-tests` 适配器）；
-- L05 完整阶段记录（`PHASE-3.md`）、`TASKS.md` 进度同步与最终课程复盘。
+- public capability 与 thenable callback 的双向竞争（`resolve(thenable)` 后迟到 public reject、public reject 后迟到 `resolve(thenable)`）；
+- 同一 thenable 被两个 promise 采用时 local guard 的独立性，以及 guard 粒度必须精确到单次采用；
+- L05 阶段记录（`PHASE-3.md`）、学习记录 0003、`TASKS.md` 进度同步与课程复盘。
+
+仍未完成（详见 `PHASE-3.md` 的边界清单）：
+
+- 更完整的多次 resolve/reject 竞争矩阵，含环形 thenable 与深层嵌套；
+- 环形 thenable 的处置策略，以及深层嵌套 `RangeError` 是否被静默吞掉（未验证假设）；
+- Promises/A+ conformance suite（如 `promises-aplus-tests` 适配器），保留给 P01-L07；
+- 微任务调度与原生 Promise 的完整对齐（P01-L06）。
+- 第 3 条 guard test 尚未在 p2 settle 之后回头再断言 p1 未被波及（可选加固）。
 
 ## Git 纪律
 
@@ -382,13 +394,13 @@ ignores public reject after resolve locked onto a thenable
 ```text
 [ ] clone/pull 最新仓库
 [ ] 阅读 AGENTS.md、MISSION.md、TASKS.md 和本 playbook
-[ ] 阅读两个 learning records 与两个 PHASE 文档
+[ ] 阅读三个 learning records 与三个 PHASE 文档
 [ ] 检查 git status、当前分支和最近提交
 [ ] 运行 node --version 与 pnpm --version，确认处于受支持版本线
 [ ] 进入 packages/01Promise
 [ ] 使用 package-local lockfile 执行 pnpm install --frozen-lockfile
-[ ] 运行 51-test baseline、typecheck 和 strict unused check
-[ ] 确认当前停在 L05 的 thenable competition checkpoint：self-resolution `TypeError` 与 thenable-local once guard 已有测试，public reject 与 thenable callback 的双向竞争尚未补测
+[ ] 运行 54-test baseline、typecheck 和 strict unused check
+[ ] 确认当前停在 P01-L06 的微任务对齐 checkpoint：L05 的 public capability 双向竞争与 local guard 作用域都有判别测试，环形 thenable 与 Promises/A+ 套件仍未覆盖
 [ ] 从“下一步”恢复一次只做一个小任务的节奏
 ```
 

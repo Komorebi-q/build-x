@@ -1262,4 +1262,115 @@ describe("MyPromise thenable", () => {
     expect(snapshot.status).toBe("fulfilled");
     expect(snapshot.value).toBe(value);
   });
+
+  it("ignores the public reject that arrives after resolve locks onto a thenable", () => {
+    const reason = new Error("public reject");
+    const value = {
+      value: "inner resolved",
+    };
+    let innerResolve: Parameters<PromiseExecutor>[0] = () => {};
+    const thenable = {
+      then(resolve: Parameters<PromiseExecutor>[0]) {
+        innerResolve = resolve;
+      },
+    };
+    let publicReject: Parameters<PromiseExecutor>[1] = () => {};
+    const executor = (
+      resolve: Parameters<PromiseExecutor>[0],
+      reject: Parameters<PromiseExecutor>[1],
+    ) => {
+      publicReject = reject;
+      resolve(thenable);
+    };
+    const parent = PromiseLike(executor);
+    expect(parent.getSnapshot()).toEqual({
+      status: "pending",
+    });
+    publicReject(reason);
+    expect(parent.getSnapshot()).toEqual({
+      status: "pending",
+    });
+    innerResolve(value);
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "fulfilled") {
+      throw new Error("parent status should be 'fulfilled'");
+    }
+    expect(snapshot.status).toBe("fulfilled");
+    expect(snapshot.value).toBe(value);
+  });
+
+  it("rejects immediately when the public reject happens before a late resolve(thenable)", () => {
+    const reason = new Error("public reject");
+    let readCount = 0;
+    const thenable = {
+      get then() {
+        readCount++;
+        return (resolve: Parameters<PromiseExecutor>[0]) => {
+          resolve("then invoked!!!");
+        };
+      },
+    };
+    const executor = (
+      resolve: Parameters<PromiseExecutor>[0],
+      reject: Parameters<PromiseExecutor>[1],
+    ) => {
+      reject(reason);
+      resolve(thenable);
+    };
+    const parent = PromiseLike(executor);
+    const snapshot = parent.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error("parent status should be 'rejected'");
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(reason);
+    expect(readCount).toBe(0);
+  });
+
+  it("keeps the thenable-local once guard independent for each promise that adopts the same thenable", () => {
+    const callbacks: [
+      Parameters<PromiseExecutor>[0],
+      Parameters<PromiseExecutor>[1],
+    ][] = [];
+    let readCount = 0;
+    const thenable = {
+      get then() {
+        readCount++;
+        return (
+          resolve: Parameters<PromiseExecutor>[0],
+          reject: Parameters<PromiseExecutor>[1],
+        ) => {
+          callbacks.push([resolve, reject]);
+        };
+      },
+    };
+    const executor = (resolve: Parameters<PromiseExecutor>[0]) => {
+      resolve(thenable);
+    };
+    const p1 = PromiseLike(executor);
+    const p2 = PromiseLike(executor);
+    expect(p1.getSnapshot()).toEqual({
+      status: "pending",
+    });
+    expect(p2.getSnapshot()).toEqual({
+      status: "pending",
+    });
+    expect(readCount).toBe(2);
+    const value = Symbol("p1 value");
+    const reason = Symbol("p2 reason");
+    callbacks[0][0](value);
+    callbacks[1][1](reason);
+    const snapshot2 = p2.getSnapshot();
+    if (snapshot2.status !== "rejected") {
+      throw new Error("p2 status should be 'rejected'");
+    }
+    expect(snapshot2.status).toBe("rejected");
+    expect(snapshot2.reason).toBe(reason);
+    const snapshot1 = p1.getSnapshot();
+    if (snapshot1.status !== "fulfilled") {
+      throw new Error("p1 status should be 'fulfilled'");
+    }
+    expect(snapshot1.status).toBe("fulfilled");
+    expect(snapshot1.value).toBe(value);
+  });
 });
