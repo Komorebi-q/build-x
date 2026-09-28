@@ -57,7 +57,7 @@ flowchart TD
 
 ## 本阶段新增的三条 guard test
 
-三条测试都在 `describe("MyPromise thenable")` 内，都不使用 scheduler / flush，因为这三条路径不经过 reactions。
+三条测试都在 `describe("MyPromise thenable resolution")` 内（分属 `thenable-local once guard` 与 `public capability lock` 两个子分组），都不使用 scheduler / flush，因为这三条路径不经过 reactions。
 
 | 测试 | 观察的竞争 | 判别断言 |
 | --- | --- | --- |
@@ -116,13 +116,14 @@ mine   two-node-cycle {"status":"pending"}
 
 当前 Promise 包共有 54 条 Vitest 测试：
 
-| 测试组 | 数量 | 证明内容 |
+| 顶层测试组 | 数量 | 子分组与证明内容 |
 | --- | ---: | --- |
-| 状态机 | 8 | executor、三态、first-settlement-wins、executor 抛错 |
-| Scheduler 与基础 reactions | 8 | 手动 flush、FIFO、注册时机、只运行一次 |
-| Runtime microtask | 1 | 默认 handler 在同步代码之后运行 |
-| Child Promise | 18 | child identity、普通值传播、异常、siblings、多级链 |
-| Thenable resolution | 19 | 采用、单次读取、`this` 绑定、getter/call 抛错、嵌套采用、self-resolution、三处竞争与 guard 作用域 |
+| `MyPromise state machine` | 8 | `construction`、`state transitions`、`executor errors`；三态、first-settlement-wins、executor 抛错 |
+| `MyPromise scheduling` | 9 | `scheduler queue`（手动 flush、FIFO）、`deferred handlers`（注册时机、只运行一次、注册顺序）、`runtime microtask`（默认 handler 在同步代码之后运行） |
+| `MyPromise child Promise` | 18 | `child identity`、`handler selection`、`missing or non-function handlers`、`ordinary value propagation`、`handler errors`、`siblings and chains` |
+| `MyPromise thenable resolution` | 19 | `adoption`、`then property and candidate classification`、`resolution errors`、`thenable-local once guard`、`pending states`、`self-resolution`、`public capability lock` |
+
+测试文件按功能分层：顶层四个 describe 对应四个职责，子 describe 对应同一职责下的具体不变量。整理过程只新增/重命名 describe 包装并调整缩进，没有任何断言被移动、改写或删除（用去缩进后的行多重集比较与 54 条运行时测试名逐一核对证明）。
 
 本检查点的验证门槛：
 

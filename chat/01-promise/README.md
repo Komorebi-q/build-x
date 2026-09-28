@@ -283,13 +283,14 @@ Parameters<PromiseExecutor>[1] → reject capability
 
 当前 Promise 包共有 54 条 Vitest 测试：
 
-| 测试组 | 数量 |
-| --- | ---: |
-| 状态机 | 8 |
-| Scheduler 与基础 reactions | 8 |
-| Runtime microtask | 1 |
-| Child Promise | 18 |
-| Thenable resolution | 19 |
+| 顶层测试组 | 数量 | 子分组 |
+| --- | ---: | --- |
+| `MyPromise state machine` | 8 | `construction`、`state transitions`、`executor errors` |
+| `MyPromise scheduling` | 9 | `scheduler queue`、`deferred handlers`、`runtime microtask` |
+| `MyPromise child Promise` | 18 | `child identity`、`handler selection`、`missing or non-function handlers`、`ordinary value propagation`、`handler errors`、`siblings and chains` |
+| `MyPromise thenable resolution` | 19 | `adoption`、`then property and candidate classification`、`resolution errors`、`thenable-local once guard`、`pending states`、`self-resolution`、`public capability lock` |
+
+测试文件按功能分组：顶层 describe 对应职责，子 describe 对应同一职责下的具体不变量。查找某个不变量时先定位顶层组，再看子分组，不要依赖历史文件顺序。
 
 2026-09-28 提交前 fresh verification（Node.js v26.10.0、pnpm 12.6.0）为 `54/54 passed`，`pnpm typecheck` 与 `tsc --noEmit --noUnusedLocals --noUnusedParameters` 退出码均为 `0`；新任务仍必须重新运行，不能只引用本文件。
 
