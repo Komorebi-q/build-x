@@ -2,7 +2,7 @@
 
 > 用途：在新机器、新 Codex 任务或上下文丢失后，恢复当前 Promise 学习项目的协作纪律、验证方式和准确进度。
 >
-> 最后更新：2026-07-28
+> 最后更新：2026-09-28
 
 ## 新任务启动方式
 
@@ -203,6 +203,14 @@ public resolve(pendingThenable)
 
 外层 capability lock 保护 executor/public resolution request；每次外部 thenable 的局部 once guard 保护该次 `then(resolveOnce, rejectOnce)` 的 callback 竞争。两把锁不能复用。
 
+L05 的三处竞争点必须分别记住：
+
+| 竞争点 | 保护机制 | 不变量 |
+| --- | --- | --- |
+| executor 里的 public `resolve` / `reject` | 外层 `capabilityLocked` | 只有第一次 public 调用生效；resolve 到 thenable 之后迟到的 public reject 被忽略，反向顺序同理 |
+| 同一次 `then` 调用拿到的 inner `resolve` / `reject` | 该次调用的局部 `called` 标记 | 只有第一个 callback 生效；先 reject 时迟到 candidate 的 `.then` 不会被读取 |
+| 写入终态 | `status !== "pending"` 时直接 return | fulfilled / rejected 都是终态，不会被后来者覆盖 |
+
 ### Test scheduler 不属于 Promise API
 
 `flushNext()` / `flushAll()` 是注入的 test scheduler 提供的观测工具：
@@ -256,6 +264,8 @@ Parameters<PromiseExecutor>[1] → reject capability
 - `616939c`：收紧 reaction/capability 类型职责，完成 L04 行为 handoff。
 - `14bca98`：开始 L05 Promise Resolution Procedure；加入共同 resolution 路径、thenable adoption、单次 `.then` 读取、getter 异常处理、递归采用与局部 once guard。
 - `29684f3`：补齐 saved `then` 调用阶段的异常处理，并用 callback/throw 竞争测试锁定 thenable-local once guard。
+- `0f4121c`：更新 handoff 与本文件，把 L05 已覆盖的 thenable 行为与遗留项写进 playbook。
+- `27cfbcc`：补上 L05 剩余的 focused test，形成 51 条基线，并加入 `self === candidate` 的 `TypeError` 守卫。
 
 详细阶段记录：
 
@@ -266,7 +276,7 @@ Parameters<PromiseExecutor>[1] → reject capability
 
 ### 当前测试基线
 
-当前 Promise 包共有 44 条 Vitest 测试：
+当前 Promise 包共有 51 条 Vitest 测试：
 
 | 测试组 | 数量 |
 | --- | ---: |
@@ -274,9 +284,9 @@ Parameters<PromiseExecutor>[1] → reject capability
 | Scheduler 与基础 reactions | 8 |
 | Runtime microtask | 1 |
 | Child Promise | 18 |
-| Thenable resolution | 9 |
+| Thenable resolution | 16 |
 
-2026-07-28 提交前 fresh verification 为 `44/44 passed`；新任务仍必须重新运行，不能只引用本文件。
+2026-09-28 提交前 fresh verification（Node.js v25.9.0、pnpm 9.0.5）为 `51/51 passed`，`pnpm typecheck` 与 `tsc --noEmit --noUnusedLocals --noUnusedParameters` 退出码均为 `0`；新任务仍必须重新运行，不能只引用本文件。
 
 ### P01-L04 收束状态
 
@@ -294,21 +304,22 @@ L04 行为与类型 REFACTOR 已通过整体审查：
 
 ### 下一步
 
-下一小步只写一条 GREEN guard test，不修改 `promise.ts`：
+L05 剩下的最大缺口是 **public capability 与 thenable callback 的双向竞争**。下一小步仍只写一条 GREEN guard test，不修改 `promise.ts`：
 
 ```text
-ignores a second resolve after a thenable resolves to a pending thenable
+ignores public reject after resolve locked onto a thenable
 ```
 
 要求：
 
-- 第一个 candidate 是 pending thenable：保存 `resolveFirst`，但构造期间不调用；
-- 第二个 candidate 是带可观察 `.then` getter 的 late thenable，getter 每次读取都增加计数；
-- outer thenable 连续执行 `resolve(firstThenable)` 与 `resolve(lateThenable)`；
-- 构造完成后 parent 应保持 pending，且 late getter 的读取次数必须是 `0`；
-- 手动调用 `resolveFirst(value)` 后，parent 应 fulfilled，`snapshot.value` 与原始 `value` 使用 `toBe`，late getter 仍为 `0`；
+- executor 先 `resolve(pendingThenable)`：该 thenable 只保存 inner `resolve` / `reject`，构造期间不调用；
+- 随后在同一个 executor 内调用 public `reject(lateReason)`；
+- 断言 public reject 被 capability lock 忽略：parent 仍是 pending，没有写入任何终态；
+- 手动调用 inner `resolve(value)` 后 parent 才 fulfilled，`snapshot.value` 与原始 `value` 使用 `toBe`；
 - 不使用 scheduler/flush；
-- 当前实现预计直接保持 GREEN；通过后的测试总数应为 `45/45`。
+- 当前实现预计直接保持 GREEN；通过后的测试总数应为 `52/52`。
+
+紧接的同族反向 guard test 是：executor 先 `reject(publicReason)` 再 `resolve(lateThenable)`，断言 parent 立即 rejected、`snapshot.reason` 与 `publicReason` 使用 `toBe`，且 lateThenable 的 `.then` getter 读取次数为 `0`。
 
 ### P01-L05 当前进度与边界
 
@@ -328,21 +339,21 @@ ignores a second resolve after a thenable resolves to a pending thenable
 - outer resolve 到 pending inner thenable 后再 throw 时，迟到异常由同一个 local once guard 忽略，inner 仍可最终 fulfill parent；
 - thenable 先 reject 后再 resolve 一个带可观察 getter 的 candidate 时，迟到 candidate 的 `.then` 不会被读取。
 
-runtime 已存在但尚缺 focused test 的路径：
+`27cfbcc` 把上一轮还缺 focused test 的路径补齐，并加入 self-resolution 守卫：
 
-- `.then` 不可调用时把整个对象当普通值 fulfill；
-- function-shaped thenable；
+- `.then` 不可调用时，整个对象按普通值 fulfilled，且 `.then` getter 只读取一次；
+- function-shaped thenable（函数对象带 `then`）按 thenable 采用；
 - 保存的 `then` 确实以 candidate 为 `this`；
-- thenable 直接返回但不调用 callbacks 时保持 pending；
-- 普通值 resolve 后的迟到 reject 被终态 guard 忽略。
+- thenable 直接返回但不调用任何 callback 时 parent 保持 pending；
+- 同一个 thenable 连续 resolve 到 pending thenable 时，第二个 candidate 不会被读取；
+- `self === candidate` 的判定放在读取 `.then` 之前，因此 `resolve(self)` 与 handler 返回自己的 child 都直接以 `TypeError` reject，不会递归读取自身。
 
 仍未完成：
 
-- 同一个 thenable 连续调用 resolve 时，第二个 candidate 不应被读取或采用的 focused test；
+- public capability 与 thenable callback 的双向竞争（public reject after `resolve(thenable)`、public reject before late `resolve(thenable)`）；
 - 更完整的 resolve/reject 多次竞争矩阵；
-- child self-resolution cycle 以 `TypeError` reject；
-- 更复杂循环与 Promises/A+ conformance；
-- L05 完整阶段记录、`TASKS.md` 进度同步与最终课程复盘。
+- 更复杂循环（例如 thenable 链自引用）与 Promises/A+ conformance suite（如 `promises-aplus-tests` 适配器）；
+- L05 完整阶段记录（`PHASE-3.md`）、`TASKS.md` 进度同步与最终课程复盘。
 
 ## Git 纪律
 
@@ -376,8 +387,8 @@ runtime 已存在但尚缺 focused test 的路径：
 [ ] 运行 node --version 与 pnpm --version，确认处于受支持版本线
 [ ] 进入 packages/01Promise
 [ ] 使用 package-local lockfile 执行 pnpm install --frozen-lockfile
-[ ] 运行 44-test baseline、typecheck 和 strict unused check
-[ ] 确认当前停在 then invocation exception 与 callback competition checkpoint，尚未实现 second-resolve focused test 和 self-resolution
+[ ] 运行 51-test baseline、typecheck 和 strict unused check
+[ ] 确认当前停在 L05 的 thenable competition checkpoint：self-resolution `TypeError` 与 thenable-local once guard 已有测试，public reject 与 thenable callback 的双向竞争尚未补测
 [ ] 从“下一步”恢复一次只做一个小任务的节奏
 ```
 
