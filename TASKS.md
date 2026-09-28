@@ -105,6 +105,17 @@
 - 核心产出：分别测试编译流水线的四个阶段，为 AST 增加 source location，并对非法 token 返回带行列号的结构化错误。
 - 扩展方向：JSX 或 TypeScript 子集、作用域与符号表、常量折叠、错误恢复、source map、CLI。
 - 原始教程：[The Super Tiny Compiler](https://github.com/jamiebuilds/the-super-tiny-compiler)
+- 对照材料：[The Super Tiny Compiler 本地源码](./sources/the-super-tiny-compiler/the-super-tiny-compiler.js)
+- 详细教程：
+  - [ ] P04-L01 · [先观察最小编译器契约](./lessons/0026-p04-observe-compiler-contract.html)
+  - [ ] P04-L02 · [用位置游标切分 token](./lessons/0027-p04-tokenize-with-locations.html)
+  - [ ] P04-L03 · [把 token 递归解析成源 AST](./lessons/0028-p04-parse-source-ast.html)
+  - [ ] P04-L04 · [用 visitor 验证 AST 遍历契约](./lessons/0029-p04-traverse-with-visitors.html)
+  - [ ] P04-L05 · [把源 AST 转换成目标 AST](./lessons/0030-p04-transform-target-ast.html)
+  - [ ] P04-L06 · [从目标 AST 生成确定代码](./lessons/0031-p04-generate-deterministic-code.html)
+  - [ ] P04-L07 · [连接流水线与结构化诊断](./lessons/0032-p04-integrate-pipeline-diagnostics.html)
+  - [ ] P04-L08 · [最小编译器项目验收与复盘](./lessons/0033-p04-acceptance-and-retrospective.html)
+- 随查资料：[最小编译器机制速查](./reference/compiler-field-guide.html)
 
 ### [ ] P05 · Browser Engineering
 

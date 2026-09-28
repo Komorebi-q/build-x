@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P04-L05 把源 AST 转换成目标 AST</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P04-L05">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P04 · Lesson 5 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P04 · Transformation</p>
+        <h1>把“同一含义”重新编码为目标树</h1>
+        <p class="lede">转换不是改几个字段名。你会明确源 schema 与目标 schema 的映射、顶层表达式为什么要包装成 statement，并让每个目标节点保留来源位置。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">核心：source AST → target AST</span><span class="meta-item">产出：映射表、转换测试、位置传播规则</span></div>
+      </header>
+
+      <section class="lesson-section"><h2>本节目标</h2><div class="objectives">
+        <div class="objective"><b>区分两套 schema</b><p>源 Call 的 name/params 与目标 Call 的 callee/arguments 含义相关但形状不同。</p></div>
+        <div class="objective"><b>构造新树</b><p>不让目标字段泄漏进源 AST 的公共 schema。</p></div>
+        <div class="objective"><b>处理上下文</b><p>同一个 call 在顶层需要 statement 包装，在参数中仍是 expression。</p></div>
+        <div class="objective"><b>传播 provenance</b><p>新节点能追溯到对应源节点的 location。</p></div>
+      </div></section>
+
+      <section class="lesson-section" id="mapping"><h2>先写映射表</h2>
+        <div class="table-wrap"><table><thead><tr><th>源节点</th><th>目标节点</th><th>关键变化</th></tr></thead><tbody>
+          <tr><td>Program.body</td><td>Program.body</td><td>每个顶层 expression 包装为 ExpressionStatement</td></tr>
+          <tr><td>NumberLiteral</td><td>NumberLiteral</td><td>value 保留，loc 继承</td></tr>
+          <tr><td>StringLiteral</td><td>StringLiteral</td><td>value 保留，未来生成器负责引号/转义</td></tr>
+          <tr><td>Call(name, params)</td><td>Call(callee, arguments)</td><td>name 变 Identifier；params 递归变 arguments</td></tr>
+          <tr><td>顶层 Call</td><td>ExpressionStatement(Call)</td><td>表达式进入 statement 位置</td></tr>
+        </tbody></table></div>
+        <div class="callout warning"><span class="callout-title">同名不等于同 schema</span><p>源和目标都可能有 <code>CallExpression</code>，但字段契约不同。测试和类型命名应防止把源节点直接喂给 generator。</p></div>
+      </section>
+
+      <section class="lesson-section" id="tasks"><h2>任务拆解</h2>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>测试 leaf 与 context</h3></div><ol>
+          <li>单个 number/string 节点转换后值与 loc 不丢失。</li>
+          <li>嵌套 call 的 callee 是 Identifier，参数顺序不变。</li>
+          <li>顶层 call 有 ExpressionStatement；参数中的 call 没有多余 wrapper。</li>
+          <li>多个顶层表达式各自形成目标 Program.body 项。</li>
+          <li>源 AST 在转换后不出现目标专用字段或临时可枚举属性。</li>
+        </ol><p class="deliverable"><strong>检查点：</strong>分别断言源树未被污染和目标树形状正确。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>选择一种上下文策略并写下取舍</h3></div><p>上游参考会在源节点上挂临时 <code>_context</code>，把旧树与新树的目标数组连接起来。你可以学习这个机制，也可以使用显式递归返回值或独立 context map。无论选择哪种，都回答：</p><ul>
+          <li>目标孩子由谁追加到哪个数组？</li>
+          <li>顶层与嵌套 call 如何区分？</li>
+          <li>重复运行 transformer 是否得到相同结果？</li>
+          <li>源 AST 是否仍符合它原本的公开 schema？</li>
+        </ul><p class="deliverable"><strong>交付：</strong>一页策略说明和对应不变量测试。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>定义位置传播</h3></div><ol>
+          <li>目标 literal 与 call 继承对应源节点 loc。</li>
+          <li>callee Identifier 至少指向源 call 名称的 span；若源 AST 没保存 nameLoc，先决定是否补字段。</li>
+          <li>生成的 ExpressionStatement 可继承整个顶层 expression span，并标明它是 synthetic wrapper。</li>
+          <li>不要编造不存在于源文本中的精确字符位置；synthetic 节点要有明确策略。</li>
+        </ol><p class="deliverable"><strong>交付：</strong>目标 AST 中每类节点的 provenance 规则。</p></div>
+      </section>
+
+      <section class="lesson-section" id="hints"><h2>逐级提示</h2>
+        <details><summary>提示 1：顶层 literal 也要 statement wrapper 吗？</summary><p>先看目标语言 Program.body 的契约。若 body 只接收 statement，那么任何顶层 expression 都应统一包装，而不是只特判 call。</p></details>
+        <details><summary>提示 2：怎样证明参数顺序没变？</summary><p>使用不同值和不同嵌套形状的三个参数，断言目标 arguments 的结构序列；不要只用三个相同数字。</p></details>
+        <details><summary>提示 3：怎样避免源树污染？</summary><p>转换前后序列化或深冻结源 AST，或检查不存在额外字段。选择与你当前工具相匹配的证据。</p></details>
+      </section>
+
+      <section class="lesson-section" id="review"><h2>自查问题</h2><ol>
+        <li>为什么 parser 不直接生成目标 AST？分离后你获得了什么可测试边界？</li>
+        <li>Identifier 的位置与整个 CallExpression 的位置为什么不同？</li>
+        <li>synthetic node 没有原文字符时，loc、origin 或 generated 标记怎样表达更诚实？</li>
+        <li>转换前后哪些语义必须保持，哪些表面形状必须改变？</li>
+        <li>如果以后做常量折叠，应该放 parser、transformer 还是 generator？为什么？</li>
+      </ol></section>
+
+      <section class="lesson-section" id="accept"><h2>验收标准</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="mapping" id="p04l05-a"><label for="p04l05-a">每种源节点都有明确目标映射和测试。</label></li>
+        <li><input type="checkbox" data-progress="context" id="p04l05-b"><label for="p04l05-b">顶层与嵌套 call 的 wrapper 行为正确。</label></li>
+        <li><input type="checkbox" data-progress="order" id="p04l05-c"><label for="p04l05-c">嵌套与多参数顺序在目标树中保持。</label></li>
+        <li><input type="checkbox" data-progress="location" id="p04l05-d"><label for="p04l05-d">目标节点的位置或 synthetic 策略有证据。</label></li>
+        <li><input type="checkbox" data-progress="purity" id="p04l05-e"><label for="p04l05-e">源 AST 未被公开 schema 之外的字段污染，或我清楚记录了教学取舍。</label></li>
+      </ul><div class="callout success"><span class="callout-title">需要审阅时</span><p>发来映射表、源/目标 AST 对照和 provenance 规则。我会先查 schema 混用、顶层上下文与位置丢失。</p></div></section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>先读：</strong><a href="../sources/the-super-tiny-compiler/the-super-tiny-compiler.js">上游 transformer</a>，重点识别 <code>_context</code> 为什么有效以及为什么是教学近似。再看 <a href="https://babeljs.io/docs/babel-traverse">Babel Traverse</a> 对节点类型 visitor 的生产接口。</p></div></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0029-p04-traverse-with-visitors.html"><small>上一课</small>遍历与 visitor</a><a class="next" href="0031-p04-generate-deterministic-code.html"><small>下一课</small>生成确定代码</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>先守住两套 schema，再优化转换写法。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/compiler-field-guide.html#transform">转换映射</a></li><li><a href="../sources/the-super-tiny-compiler/test.js">上游目标 AST</a></li><li><a href="../TASKS.md">任务总表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P04-L05 · 转换保持语义，改变表示，并保存来源</footer>
+</body>
+</html>

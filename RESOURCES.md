@@ -48,6 +48,20 @@
   Module Records、加载、链接、导出解析与求值的规范基线。用于：验收阶段校准缓存、循环和 live binding；核心实现不要求复刻这些完整算法。
 - [Webpack：Dependency Graph](https://webpack.js.org/concepts/dependency-graph/)
   生产打包器对入口与依赖图的概念说明。用于：把 P03 的有向图映射回真实工具术语，不用来推断 P03 已支持 Webpack resolution、loader 或优化能力。
+- [教程：The Super Tiny Compiler](https://github.com/jamiebuilds/the-super-tiny-compiler)
+  P04 的原始教学骨架。用于：观察 tokenizer、parser、traverser、transformer、code generator 如何组成端到端流水线；其单文件实现只覆盖极小语法，并刻意省略位置、结构化诊断和错误恢复。
+- [本地对照快照：jamiebuilds/the-super-tiny-compiler](./sources/the-super-tiny-compiler/README.md)
+  P04 的本地只读参考，固定于提交 `d8d40130459d1537f6117a927947cd46c83182b0`。用于：离线运行原始测试、检查每个阶段的数据形状和识别教学实现的失败边界，不用于复制实现。
+- [ESTree：Node objects 与 SourceLocation](https://github.com/estree/estree/blob/master/es5.md#node-objects)
+  JavaScript AST 节点和位置对象的社区规范。用于：约定 P04 的 `loc.start / loc.end`，其中行从 1 开始、列从 0 开始，end 指向源片段后的第一个位置。
+- [Babel Parser](https://babeljs.io/docs/babel-parser)
+  现代 JavaScript parser 的官方接口说明。用于：对照 `locations`、`ranges`、`tokens`、`sourceFilename`、错误码和可选错误恢复，校准 P04 的结构化诊断字段。
+- [Babel Traverse](https://babeljs.io/docs/babel-traverse)
+  Babel 官方 AST visitor 示例。用于：把 P04 的 `enter / exit`、节点类型分派和 parent 关系映射到生产工具，但核心实现仍由学习者亲自完成。
+- [Babel Generator](https://babeljs.io/docs/babel-generator)
+  Babel 官方代码生成说明。用于：理解 AST 不保存全部原始空白、生成格式不保证复刻输入，以及 source map 是单独的映射产物。
+- [ECMAScript：Lexical Grammar](https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html)
+  ECMAScript 词法与语法文法的规范基线。用于：比较 P04 的极小字符分类规则与真实 JavaScript lexer 的上下文、Unicode 和 token 复杂度，避免过度宣称兼容性。
 
 ## Wisdom (Communities)
 
@@ -65,3 +79,4 @@
 - P03 核心只覆盖单入口、JavaScript 文件和已声明的静态相对 ESM 子集。bare package、动态 import、re-export、非 JavaScript 资源与 Node / 浏览器完整 resolution 必须明确标为不支持或另行补充资料。
 - Minipack 本地快照使用 Babel 6 时代的包名和依赖，只适合阅读教学结构。学习者自己的实现应记录实际选择的现代 parser / transform 版本，不应把参考仓库的旧 lockless 依赖安装方式当作工程基线。
 - P03 将“同一 canonical filename 只建一个 asset”与“同一模块实例只执行一次”分开验证。核心阶段可以先保留无 runtime cache 的可观察限制，但必须写明策略；模块缓存、CommonJS 风格部分初始化和原生 ESM 循环语义不能互相等同。
+- P04 只把极小 Lisp 风格表达式编译为函数调用式 JavaScript 文本；它不解析 JavaScript，也不包含作用域、类型检查、优化、错误恢复或 source map。位置字段采用 ESTree 风格约定，但自定义 AST 不声称与 ESTree/Babel AST 完全兼容。

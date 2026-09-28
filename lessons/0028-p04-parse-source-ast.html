@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P04-L03 把 token 递归解析成源 AST</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P04-L03">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P04 · Lesson 3 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P04 · Syntactic Analysis</p>
+        <h1>让递归结构来自文法，而不是括号计数猜测</h1>
+        <p class="lede">你将把扁平 token 流解析为源语言 AST。每次 parseExpression 消费且只消费一个完整表达式，嵌套调用自然通过递归形成。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">核心：递归下降</span><span class="meta-item">产出：源 AST、消费不变量、语法错误矩阵</span></div>
+      </header>
+
+      <section class="lesson-section"><h2>本节目标</h2><div class="objectives">
+        <div class="objective"><b>维护 token cursor</b><p>peek 只看，consume 明确前进，EOF 是可测试状态。</p></div>
+        <div class="objective"><b>解析一个表达式</b><p>literal 与 call 都遵守“恰好消费一个完整表达式”。</p></div>
+        <div class="objective"><b>组合节点 span</b><p>父节点从起始 token 到结束 token 形成完整半开区间。</p></div>
+        <div class="objective"><b>区分语法错误</b><p>缺名字、意外右括号、缺结束括号和未知 token 分别诊断。</p></div>
+      </div></section>
+
+      <section class="lesson-section" id="invariant"><h2>先理解消费不变量</h2>
+        <pre><code>parseProgram:
+  当未到 EOF：反复调用 parseExpression
+
+parseExpression:
+  若当前是 number/string：消费一个 token，返回 literal
+  若当前是左括号：调用 parseCall
+  否则：报告当前位置的语法错误
+
+parseCall:
+  消费左括号与紧随其后的 name
+  反复解析参数，直到右括号
+  消费右括号，返回 call</code></pre>
+        <p>这是控制流草图，不是最终实现。你要先用测试证明每条路径消费多少 token，以及失败时错误指向哪个 token 或 EOF。</p>
+      </section>
+
+      <section class="lesson-section" id="tasks"><h2>任务拆解</h2>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>先锁定 AST schema</h3></div><p>为 <code>Program</code>、<code>NumberLiteral</code>、<code>StringLiteral</code>、源语言 <code>CallExpression</code> 写字段表。每种节点都包含 <code>type</code> 与 <code>loc</code>；call 使用 <code>name</code> 和 <code>params</code>。</p><p class="deliverable"><strong>检查点：</strong>AST 可以表达两个顶层表达式与至少三层嵌套调用。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>按复杂度逐步变绿</h3></div><ol>
+          <li>空程序与单个 literal。</li>
+          <li>无参数调用与多个参数调用。</li>
+          <li>嵌套调用。</li>
+          <li>多个顶层表达式。</li>
+          <li>每个节点的 source span。</li>
+        </ol><p class="deliverable"><strong>检查点：</strong>不要从最终大 AST 快照起步；每一步只增加一种结构。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>设计语法错误矩阵</h3></div>
+          <div class="table-wrap"><table><thead><tr><th>输入类别</th><th>建议错误码</th><th>位置应指向</th></tr></thead><tbody>
+            <tr><td>顶层多余 <code>)</code></td><td><code>UNEXPECTED_CLOSE_PAREN</code></td><td>该右括号</td></tr>
+            <tr><td><code>( 1 2)</code></td><td><code>EXPECTED_CALL_NAME</code></td><td>数字 token</td></tr>
+            <tr><td><code>(add 1</code></td><td><code>UNTERMINATED_CALL</code></td><td>EOF，另带 call start</td></tr>
+            <tr><td>parser 收到未知 token type</td><td><code>UNEXPECTED_TOKEN</code></td><td>该 token span</td></tr>
+          </tbody></table></div>
+          <p class="deliverable"><strong>交付：</strong>节点 schema、阶段测试和至少四个语法错误对象。</p></div>
+      </section>
+
+      <section class="lesson-section" id="locations"><h2>父节点位置如何合成</h2>
+        <ul>
+          <li>literal：直接继承 token 的 start/end。</li>
+          <li>call：start 来自左括号，end 来自右括号消费后的 end。</li>
+          <li>program：有 body 时覆盖首尾表达式；空程序使用文件起点的零宽 span，或清晰声明 <code>loc=null</code>。</li>
+          <li>不要根据 value 长度倒推位置；字符串 value 可能不包含引号，换行与未来转义也会破坏推算。</li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="hints"><h2>逐级提示</h2>
+        <details><summary>提示 1：嵌套调用怎样停在正确右括号？</summary><p>内层 parseCall 会消费自己的右括号并返回；外层游标因此落在外层的下一个参数或右括号上。每一层只对自己的边界负责。</p></details>
+        <details><summary>提示 2：为什么 EOF 不能直接读取 token.type？</summary><p>EOF 不是普通 token 时，peek 可能返回空值。所有需要 token 的分支都要先决定 EOF 是否是合法终止或结构化错误。</p></details>
+        <details><summary>提示 3：如何避免“接受 (add)”却没验证 name？</summary><p>把 <code>expect(type, value?)</code> 看作一种带诊断的消费操作；它返回已验证 token，而不是先随意前进再取 value。</p></details>
+      </section>
+
+      <section class="lesson-section" id="review"><h2>自查问题</h2><ol>
+        <li><code>parseExpression</code> 成功后，游标必须满足什么不变量？</li>
+        <li>为什么 <code>Program.body</code> 是数组，而调用参数也是数组，但两者终止条件不同？</li>
+        <li>parser 是否应该接受 tokenizer 根本不会产生的 token？如果收到，应如何失败？</li>
+        <li>未闭合调用的错误主位置放 EOF 时，为什么还值得保留起始左括号位置？</li>
+        <li>AST 快照测试之外，你如何单独证明 span 正确？</li>
+      </ol></section>
+
+      <section class="lesson-section" id="accept"><h2>验收标准</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="schema" id="p04l03-a"><label for="p04l03-a">四种源 AST 节点 schema 已明确并通过小步测试。</label></li>
+        <li><input type="checkbox" data-progress="nested" id="p04l03-b"><label for="p04l03-b">嵌套与多顶层表达式的父子关系正确。</label></li>
+        <li><input type="checkbox" data-progress="span" id="p04l03-c"><label for="p04l03-c">literal、call 与 program 的 span 可切回对应源码。</label></li>
+        <li><input type="checkbox" data-progress="errors" id="p04l03-d"><label for="p04l03-d">四类语法错误有不同 code 与准确位置。</label></li>
+        <li><input type="checkbox" data-progress="trace" id="p04l03-e"><label for="p04l03-e">我能手演嵌套输入中每次递归的进入、返回与游标值。</label></li>
+      </ul><div class="callout success"><span class="callout-title">需要审阅时</span><p>发来一张递归轨迹表、最小 AST 和错误矩阵。我会优先检查消费不变量与 EOF 路径；不会替你写 parser。</p></div></section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>先读：</strong><a href="../sources/the-super-tiny-compiler/the-super-tiny-compiler.js">上游 parser 讲解</a>，重点跟踪共享 cursor 如何跨递归前进。再用 <a href="https://github.com/estree/estree/blob/master/es5.md#node-objects">ESTree 的 end-exclusive location</a> 校正自己的 span。</p></div></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0027-p04-tokenize-with-locations.html"><small>上一课</small>位置化 token</a><a class="next" href="0029-p04-traverse-with-visitors.html"><small>下一课</small>遍历与 visitor</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>先证明每次递归消费什么，再追求完整 AST。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/compiler-field-guide.html#parser">Parser 不变量</a></li><li><a href="../sources/the-super-tiny-compiler/test.js">上游 AST 夹具</a></li><li><a href="../TASKS.md">任务总表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P04-L03 · 递归层级对应语法层级，游标证明消费边界</footer>
+</body>
+</html>

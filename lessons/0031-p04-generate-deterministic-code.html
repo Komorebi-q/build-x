@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P04-L06 从目标 AST 生成确定代码</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P04-L06">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P04 · Lesson 6 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P04 · Code Generation</p>
+        <h1>让每种目标节点只负责自己的打印规则</h1>
+        <p class="lede">你将从目标 AST 递归生成稳定文本，并把逗号、括号、分号、换行与字符串转义变成明确契约，而不是散落在转换阶段的字符串拼接。</p>
+        <div class="meta-strip"><span class="meta-item">45–75 分钟</span><span class="meta-item">核心：递归 printer</span><span class="meta-item">产出：节点打印表、golden tests、输出语法验证</span></div>
+      </header>
+
+      <section class="lesson-section"><h2>本节目标</h2><div class="objectives">
+        <div class="objective"><b>按 node.type 分派</b><p>每种节点拥有局部、可组合的打印规则。</p></div>
+        <div class="objective"><b>稳定格式</b><p>相同目标 AST 多次生成完全相同的代码。</p></div>
+        <div class="objective"><b>正确编码字面量</b><p>字符串输出考虑引号和转义，不把原始 value 直接包起来。</p></div>
+        <div class="objective"><b>验证目标语法</b><p>不仅比较文本，还让 JavaScript parser 对产物做语法检查。</p></div>
+      </div></section>
+
+      <section class="lesson-section" id="rules"><h2>先写节点打印表</h2>
+        <div class="table-wrap"><table><thead><tr><th>目标节点</th><th>输出规则</th><th>组合边界</th></tr></thead><tbody>
+          <tr><td>Program</td><td>逐个打印 body</td><td>语句之间用固定换行</td></tr>
+          <tr><td>ExpressionStatement</td><td>打印 expression 后加分号</td><td>分号只由 statement 负责</td></tr>
+          <tr><td>CallExpression</td><td>callee + 括号内 arguments</td><td>参数由逗号空格连接</td></tr>
+          <tr><td>Identifier</td><td>输出 name</td><td>只接受已验证的目标字段</td></tr>
+          <tr><td>NumberLiteral</td><td>输出规范化 value</td><td>数值范围由语言契约决定</td></tr>
+          <tr><td>StringLiteral</td><td>输出可靠序列化后的字符串</td><td>必须处理引号、反斜杠和控制字符</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="lesson-section" id="tasks"><h2>任务拆解</h2>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>从叶子到组合节点测试</h3></div><ol>
+          <li>Identifier、NumberLiteral、StringLiteral 单独测试。</li>
+          <li>零参数、一个参数、多个参数和嵌套 CallExpression。</li>
+          <li>ExpressionStatement 的唯一分号责任。</li>
+          <li>多个顶层 statement 的换行策略。</li>
+          <li>未知 node type 返回带 phase、code、loc 的内部诊断。</li>
+        </ol><p class="deliverable"><strong>检查点：</strong>每个小节点失败能定位到一个打印规则。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>补容易被 happy path 隐藏的字符串</h3></div><p>至少测试包含双引号、反斜杠、换行或 tab 的 value。先写下你允许的源字符串语法；即使 tokenizer 暂不支持转义，也要确保 generator 对目标 AST 输入的契约清晰。</p><p class="deliverable"><strong>检查点：</strong>生成结果能被 JavaScript parser 接受，且求值时字符串值不变（若做运行测试，请隔离并限制输入）。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>建立双层 oracle</h3></div><ol>
+          <li>文本 oracle：少量小 AST 使用精确字符串断言。</li>
+          <li>语法 oracle：所有合法目标 AST 的输出都能被可靠 JavaScript parser 解析。</li>
+          <li>确定性 oracle：同一 AST 连续生成两次完全一致，AST 本身未被修改。</li>
+        </ol><p class="deliverable"><strong>交付：</strong>节点打印表、golden cases 和语法验证摘要。</p></div>
+      </section>
+
+      <section class="lesson-section" id="boundaries"><h2>格式化不是语义本身</h2>
+        <p>Babel Generator 官方说明：AST 通常不保存所有原始空白与换行，重新生成的格式不保证复刻输入。你的最小 generator 也应明确：</p>
+        <ul>
+          <li>保证目标代码语法与含义；</li>
+          <li>保证课程定义的确定格式；</li>
+          <li>不保证保留源语言空白、括号风格或注释；</li>
+          <li>没有 source map 时，输出位置不能自动反查源位置。</li>
+        </ul>
+      </section>
+
+      <section class="lesson-section" id="hints"><h2>逐级提示</h2>
+        <details><summary>提示 1：逗号由谁打印？</summary><p>让 CallExpression 负责连接已打印 arguments；参数节点不知道自己是不是最后一个，也不应自行加逗号。</p></details>
+        <details><summary>提示 2：字符串如何避免手写不完整转义？</summary><p>考虑使用语言已有的可靠字符串序列化原语，并用目标 parser 验证；先明确它产生的引号风格是否属于你的格式契约。</p></details>
+        <details><summary>提示 3：为什么不能执行任意输出验证？</summary><p>语法验证只需 parse。若额外求值，只使用课程自有固定 AST 与受控函数环境，避免把未知生成文本当作可信代码执行。</p></details>
+      </section>
+
+      <section class="lesson-section" id="review"><h2>自查问题</h2><ol>
+        <li>为什么分号应由 statement 而不是 call 打印？</li>
+        <li>为什么 argument 节点不应知道逗号位置？</li>
+        <li>精确字符串测试与 parser 语法测试分别能发现什么？</li>
+        <li>若未来支持运算符，为什么 precedence 会迫使 generator 了解更多父子上下文？</li>
+        <li>location 与 source map 有什么关系，又为什么不等价？</li>
+      </ol></section>
+
+      <section class="lesson-section" id="accept"><h2>验收标准</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="leaves" id="p04l06-a"><label for="p04l06-a">叶子节点与所有组合节点都有独立打印测试。</label></li>
+        <li><input type="checkbox" data-progress="strings" id="p04l06-b"><label for="p04l06-b">特殊字符串不会生成无效 JavaScript。</label></li>
+        <li><input type="checkbox" data-progress="syntax" id="p04l06-c"><label for="p04l06-c">合法目标 AST 的产物通过目标 parser 语法验证。</label></li>
+        <li><input type="checkbox" data-progress="stable" id="p04l06-d"><label for="p04l06-d">同一 AST 的输出确定且 generator 不修改 AST。</label></li>
+        <li><input type="checkbox" data-progress="unknown" id="p04l06-e"><label for="p04l06-e">未知目标节点产生带位置的结构化内部诊断。</label></li>
+      </ul><div class="callout success"><span class="callout-title">需要审阅时</span><p>发来节点打印表、三类 oracle 和一个特殊字符串案例。我会先查标点责任、转义和脆弱快照。</p></div></section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>对照：</strong><a href="../sources/the-super-tiny-compiler/the-super-tiny-compiler.js">上游 codeGenerator</a> 展示递归分派；<a href="https://babeljs.io/docs/babel-generator">Babel Generator 官方文档</a> 用于理解格式、AST 与 source map 的真实边界。</p></div></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0030-p04-transform-target-ast.html"><small>上一课</small>转换目标 AST</a><a class="next" href="0032-p04-integrate-pipeline-diagnostics.html"><small>下一课</small>流水线与诊断</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>文本快照只是一个 oracle，目标 parser 是另一个。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/compiler-field-guide.html#generator">生成规则</a></li><li><a href="https://babeljs.io/docs/babel-generator">Babel Generator</a></li><li><a href="../TASKS.md">任务总表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P04-L06 · 节点负责局部打印，组合节点负责分隔与边界</footer>
+</body>
+</html>

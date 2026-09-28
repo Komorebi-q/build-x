@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P04-L07 连接流水线与结构化诊断</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P04-L07">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P04 · Lesson 7 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P04 · Integration & Diagnostics</p>
+        <h1>让端到端编译保留每个阶段的责任</h1>
+        <p class="lede">最后的 compiler 函数应该只是流水线编排。你会用中间产物快照、阶段 trace 和统一诊断 schema 证明：组合没有抹掉单阶段的可测试性与错误位置。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">核心：集成测试 + 结构化错误</span><span class="meta-item">产出：错误契约、阶段矩阵、端到端证据</span></div>
+      </header>
+
+      <section class="lesson-section"><h2>本节目标</h2><div class="objectives">
+        <div class="objective"><b>薄编排器</b><p>compiler 只按顺序连接阶段，不复制阶段逻辑。</p></div>
+        <div class="objective"><b>统一诊断</b><p>词法、语法与内部错误共享字段，保留不同 code。</p></div>
+        <div class="objective"><b>分层测试</b><p>单元、阶段连接、端到端与负向案例各自回答不同问题。</p></div>
+        <div class="objective"><b>诚实边界</b><p>明确这是极小语言编译器，不是 JavaScript/Babel 替代品。</p></div>
+      </div></section>
+
+      <section class="lesson-section" id="diagnostic"><h2>定义诊断记录，而不只是异常文案</h2>
+        <pre><code>Diagnostic:
+  phase: "tokenize" | "parse" | "transform" | "generate"
+  code: 稳定、适合测试的机器标识
+  message: 面向人的简洁说明
+  sourceName: 输入来源
+  loc: { start, end }
+  details?: 额外上下文，例如 found / expected / nodeType</code></pre>
+        <p>Babel Parser 区分粗粒度 <code>code</code> 与细粒度 <code>reasonCode</code>，并把可选错误恢复得到的错误放在 AST 上。P04 核心不实现恢复，但可以借鉴“稳定分类字段与人类文案分离”的原则。</p>
+        <div class="callout warning"><span class="callout-title">不要伪装恢复</span><p>核心实现采用 fail-fast：返回或抛出一个结构化诊断并停止当前编译。能收集多个错误需要同步点与恢复策略，属于提高项，不是 catch 后继续循环。</p></div>
+      </section>
+
+      <section class="lesson-section" id="matrix"><h2>测试矩阵：证明阶段，也证明连接</h2>
+        <div class="table-wrap"><table><thead><tr><th>层级</th><th>输入到输出</th><th>主要证据</th></tr></thead><tbody>
+          <tr><td>单元</td><td>source→tokens；tokens→source AST；source→target AST；target AST→code</td><td>每个失败定位到单阶段</td></tr>
+          <tr><td>连接</td><td>tokens→target AST；source AST→code</td><td>相邻 schema 对得上</td></tr>
+          <tr><td>端到端</td><td>source→code</td><td>多顶层、嵌套、字符串与确定输出</td></tr>
+          <tr><td>负向</td><td>非法 source / AST→Diagnostic</td><td>phase、code、loc、sourceName 正确</td></tr>
+          <tr><td>语法验证</td><td>generated code→目标 parser</td><td>产物是合法 JavaScript</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="lesson-section" id="tasks"><h2>任务拆解</h2>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>连接薄流水线</h3></div><p>让编排代码按固定顺序传递输出；给每个阶段增加可选 trace hook 或在测试中直接调用阶段函数。回答：若未来增加 optimize，它插在何处，输入输出 schema 是什么？</p><p class="deliverable"><strong>检查点：</strong>compiler 自身没有字符分类、AST switch 或打印标点。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>建立端到端夹具集</h3></div><ol>
+          <li>空输入。</li>
+          <li>单个与多个顶层调用。</li>
+          <li>至少三层嵌套。</li>
+          <li>数字与字符串混合。</li>
+          <li>跨行输入，最终行为与单行等价但诊断位置不同。</li>
+          <li>未知字符、未闭合字符串、缺 name、多余右括号、未闭合 call。</li>
+        </ol><p class="deliverable"><strong>检查点：</strong>负向案例断言结构字段，不仅使用 <code>toThrow()</code>。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>记录一次失败假设</h3></div><p>选择一个真实 bug：例如 EOF 读取崩溃、嵌套 loc 结束位置错误、源 AST 被污染或字符串生成无效。记录现象、最初假设、最小复现、观测证据、修正假设与回归测试。</p><p class="deliverable"><strong>交付：</strong>测试矩阵、阶段 trace、诊断样例和排查记录。</p></div>
+      </section>
+
+      <section class="lesson-section" id="render"><h2>把诊断对象渲染成人能读的提示</h2>
+        <pre><code>example.tiny:2:5 [parse/EXPECTED_CALL_NAME]
+  调用左括号后需要函数名，但看到了 number
+  ( 123 4)
+    ^^^</code></pre>
+        <p>渲染器是诊断数据的消费者。错误对象保存事实，渲染器负责文件名、行文本、插入符与中文文案。这样测试、CLI 和编辑器未来可以共享同一诊断。</p>
+      </section>
+
+      <section class="lesson-section" id="hints"><h2>逐级提示</h2>
+        <details><summary>提示 1：怎样测试错误位置而不绑定完整 message？</summary><p>断言 phase、code、sourceName、start/end 与 details；message 只断言关键语义或单独测试 formatter。</p></details>
+        <details><summary>提示 2：trace 应记录什么？</summary><p>记录阶段名、输入摘要与输出摘要，不打印完整巨大 AST。核心夹具可保存 token 数、根节点类型、body 数和输出长度/文本。</p></details>
+        <details><summary>提示 3：如何避免端到端测试重复单元测试？</summary><p>端到端只选代表性路径和阶段连接；所有字符类别、节点类型和错误细分仍由单元测试承担。</p></details>
+      </section>
+
+      <section class="lesson-section" id="review"><h2>自查问题</h2><ol>
+        <li>为什么 <code>toThrow()</code> 不能证明错误质量？</li>
+        <li>phase 与 code 分开有什么价值？</li>
+        <li>一个 parser 错误的 loc 应来自当前 token、上一个 token还是调用起点？如何按错误种类选择？</li>
+        <li>为什么有 loc 还不等于有 source map？</li>
+        <li>若 tokenizer 的 token schema 改变，哪些连接测试会最先报警？</li>
+      </ol></section>
+
+      <section class="lesson-section" id="accept"><h2>验收标准</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="thin" id="p04l07-a"><label for="p04l07-a">compiler 只是薄编排，没有重复阶段逻辑。</label></li>
+        <li><input type="checkbox" data-progress="matrix" id="p04l07-b"><label for="p04l07-b">单元、连接、端到端、负向与目标语法测试齐全。</label></li>
+        <li><input type="checkbox" data-progress="diagnostic" id="p04l07-c"><label for="p04l07-c">所有失败都遵守统一诊断 schema，并保留阶段特定 code。</label></li>
+        <li><input type="checkbox" data-progress="render" id="p04l07-d"><label for="p04l07-d">至少一个多行错误可渲染文件、行列与插入符。</label></li>
+        <li><input type="checkbox" data-progress="debug" id="p04l07-e"><label for="p04l07-e">我记录了一次失败假设、证据、修正与回归测试。</label></li>
+      </ul><div class="callout success"><span class="callout-title">准备验收</span><p>把测试摘要、一个成功 trace、两个不同阶段的诊断和排查记录发给我。我会先审阅证据，再进入最终验收。</p></div></section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>校准：</strong><a href="https://babeljs.io/docs/babel-parser">Babel Parser 官方文档</a>说明 locations、ranges、sourceFilename、error code 与 errorRecovery；<a href="../sources/the-super-tiny-compiler/test.js">上游测试</a>提供最小端到端基线。P04 只借鉴接口原则，不复刻 Babel 错误恢复。</p></div></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0031-p04-generate-deterministic-code.html"><small>上一课</small>生成确定代码</a><a class="next" href="0033-p04-acceptance-and-retrospective.html"><small>下一课</small>P04 验收与复盘</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>错误对象保存事实，formatter 负责展示。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/compiler-field-guide.html#diagnostics">诊断 schema</a></li><li><a href="https://babeljs.io/docs/babel-parser">Babel Parser</a></li><li><a href="../TASKS.md">任务总表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P04-L07 · 编排连接阶段，诊断保留来源与责任</footer>
+</body>
+</html>

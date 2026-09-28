@@ -7,3 +7,6 @@
 [submodule "sources/minipack"]
 	path = sources/minipack
 	url = https://github.com/ronami/minipack.git
+[submodule "sources/the-super-tiny-compiler"]
+	path = sources/the-super-tiny-compiler
+	url = https://github.com/jamiebuilds/the-super-tiny-compiler.git

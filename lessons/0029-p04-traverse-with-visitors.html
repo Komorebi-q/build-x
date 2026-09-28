@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P04-L04 用 visitor 验证 AST 遍历契约</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P04-L04">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P04 · Lesson 4 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P04 · Traversal</p>
+        <h1>先证明访问顺序，再让转换依赖它</h1>
+        <p class="lede">遍历器不是“递归一下”就结束。你要明确每种节点的 child keys、parent 关系、enter/exit 顺序和未知节点策略，并用事件轨迹把契约锁住。</p>
+        <div class="meta-strip"><span class="meta-item">45–75 分钟</span><span class="meta-item">核心：DFS + visitor</span><span class="meta-item">产出：访问轨迹、child-key 表、失败策略</span></div>
+      </header>
+
+      <section class="lesson-section"><h2>本节目标</h2><div class="objectives">
+        <div class="objective"><b>按 schema 找孩子</b><p>Program 看 body，CallExpression 看 params，literal 没有 child。</p></div>
+        <div class="objective"><b>区分 enter / exit</b><p>enter 在孩子前，exit 在所有孩子后，顺序可预测。</p></div>
+        <div class="objective"><b>传递 parent</b><p>root 的 parent 为空，其余节点获得直接父节点。</p></div>
+        <div class="objective"><b>未知节点安全失败</b><p>不静默跳过未来节点，错误保留节点类型与位置。</p></div>
+      </div></section>
+
+      <section class="lesson-section" id="trace"><h2>先手演一棵树</h2>
+        <pre><code>Program
+└─ Call(add)
+   ├─ Number(2)
+   └─ Call(subtract)
+      ├─ Number(4)
+      └─ Number(2)</code></pre>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>闭卷写 enter/exit 轨迹</h3></div><p>为每个事件记录序号、动作、node.type、可读标签和 parent.type。然后用一个“只记录事件、不做转换”的 visitor 跑同一棵树，比较差异。</p><p class="deliverable"><strong>交付：</strong>预测轨迹与实际轨迹；任何差异都要解释。</p></div>
+      </section>
+
+      <section class="lesson-section" id="contract"><h2>遍历器的三个接口面</h2>
+        <div class="table-wrap"><table><thead><tr><th>接口</th><th>问题</th><th>测试证据</th></tr></thead><tbody>
+          <tr><td>child schema</td><td>每种 node type 的孩子在哪些字段？</td><td>每个 child 恰好访问一次且保持数组顺序</td></tr>
+          <tr><td>visitor dispatch</td><td>缺少某类 visitor 是否允许？</td><td>允许缺 handler，但仍遍历该节点的孩子</td></tr>
+          <tr><td>tree validity</td><td>未知 node type 怎么办？</td><td>结构化失败，不静默丢失整个子树</td></tr>
+        </tbody></table></div>
+        <p>visitor 可以不关心某种已知节点；traverser 却必须知道怎样穿过每种已知节点。这两个“未知”不要混为一谈。</p>
+      </section>
+
+      <section class="lesson-section" id="tasks"><h2>任务拆解</h2>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>测试最小遍历器</h3></div><ol>
+          <li>空 Program：只有 root 的 enter/exit。</li>
+          <li>单 literal：parent 指向 Program。</li>
+          <li>嵌套 call：深度优先且 params 保持源码顺序。</li>
+          <li>只定义 NumberLiteral visitor：仍能穿过 Program 与 CallExpression。</li>
+          <li>注入未知 node：得到 <code>UNKNOWN_NODE_TYPE</code> 和节点 loc。</li>
+          <li>visitor.enter 主动抛错：明确原样传播还是包装，并测试该契约。</li>
+        </ol><p class="deliverable"><strong>检查点：</strong>事件测试比较结构化数组，不靠 console.log 人眼判断。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>画 traversal stack</h3></div><p>选择最深的嵌套输入，逐步画出调用栈；标出何时能执行 exit。回答：若在 enter 时创建目标父节点，为什么子节点随后能写入它的 arguments？</p><p class="deliverable"><strong>交付：</strong>调用栈图和一句不变量说明。</p></div>
+      </section>
+
+      <section class="lesson-section" id="hints"><h2>逐级提示</h2>
+        <details><summary>提示 1：遍历数组时 parent 是谁？</summary><p>数组只是存储容器，不是 AST node；每个 child 的 parent 应是拥有该 child 数组的节点。</p></details>
+        <details><summary>提示 2：没有 visitor 方法时怎么办？</summary><p>跳过回调，但不要跳过 child traversal。节点 schema 和用户关心的 visitor 是两层决定。</p></details>
+        <details><summary>提示 3：如何减少 switch 扩展成本？</summary><p>可以先使用清晰 switch；提高阶段再比较集中 child-key map。核心是未知类型不被静默吞掉，而不是追求抽象。</p></details>
+      </section>
+
+      <section class="lesson-section" id="review"><h2>自查问题</h2><ol>
+        <li>pre-order、post-order 分别对应 enter 还是 exit？</li>
+        <li>为什么 literal 即使没有孩子，也仍应触发 enter/exit？</li>
+        <li>visitor 缺少 CallExpression handler 与 AST 出现未知 FooExpression 有何不同？</li>
+        <li>若 visitor 在遍历期间修改正在迭代的 params，顺序契约会发生什么？核心阶段允许吗？</li>
+        <li>节点 location 如何帮助定位 transformer/traverser 的内部不变量错误？</li>
+      </ol></section>
+
+      <section class="lesson-section" id="accept"><h2>验收标准</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="trace" id="p04l04-a"><label for="p04l04-a">嵌套 AST 的 enter/exit 轨迹与预测一致。</label></li>
+        <li><input type="checkbox" data-progress="parent" id="p04l04-b"><label for="p04l04-b">root/null 与所有直接 parent 关系均有断言。</label></li>
+        <li><input type="checkbox" data-progress="optional" id="p04l04-c"><label for="p04l04-c">缺 visitor handler 不阻断已知子树遍历。</label></li>
+        <li><input type="checkbox" data-progress="unknown" id="p04l04-d"><label for="p04l04-d">未知节点类型带 type 与 loc 安全失败。</label></li>
+        <li><input type="checkbox" data-progress="stack" id="p04l04-e"><label for="p04l04-e">我能用调用栈解释 enter 与 exit 的时机。</label></li>
+      </ul><div class="callout success"><span class="callout-title">需要审阅时</span><p>发来 child-key 表、事件数组和调用栈图。我会先查重复访问、parent 错位与未知节点静默跳过。</p></div></section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>对照：</strong><a href="../sources/the-super-tiny-compiler/the-super-tiny-compiler.js">上游 traverser</a> 展示最小 enter/exit 模型；<a href="https://babeljs.io/docs/babel-traverse">Babel Traverse 官方文档</a> 展示生产工具如何按节点类型访问和更新 AST。核心课不要求复刻 Babel 的 NodePath。</p></div></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0028-p04-parse-source-ast.html"><small>上一课</small>递归解析源 AST</a><a class="next" href="0030-p04-transform-target-ast.html"><small>下一课</small>转换目标 AST</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>转换器建立在遍历器之上，先锁定事件顺序。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/compiler-field-guide.html#traversal">遍历契约</a></li><li><a href="https://babeljs.io/docs/babel-traverse">Babel Traverse</a></li><li><a href="../TASKS.md">任务总表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P04-L04 · schema 决定孩子，visitor 决定动作</footer>
+</body>
+</html>

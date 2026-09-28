@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P04-L01 先观察最小编译器契约</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P04-L01">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P04 · Lesson 1 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P04 · Compiler Contract</p>
+        <h1>先把“编译”拆成四份可验证的数据契约</h1>
+        <p class="lede">这一课不写编译器。你会观察同一段输入如何依次变成 token、源 AST、目标 AST 与代码，并为每个边界写下可单独失败的契约。</p>
+        <div class="meta-strip"><span class="meta-item">45–60 分钟</span><span class="meta-item">难度：入门诊断</span><span class="meta-item">产出：四阶段预测表、语法边界、诊断答案</span></div>
+      </header>
+
+      <section class="lesson-section">
+        <h2>完成后你应该能够</h2>
+        <div class="objectives">
+          <div class="objective"><b>区分四类表示</b><p>源码、token、源 AST、目标 AST 与输出代码不是同一种数据。</p></div>
+          <div class="objective"><b>说清阶段责任</b><p>tokenizer、parser、transformer、generator 各自只承担一个转换。</p></div>
+          <div class="objective"><b>定义最小语言</b><p>先写支持和不支持的语法，不让实现范围悄悄膨胀。</p></div>
+          <div class="objective"><b>选择证据</b><p>每个阶段既有正例，也有可定位的边界与错误测试。</p></div>
+        </div>
+      </section>
+
+      <section class="lesson-section" id="experiment">
+        <h2>实验：一个表达式经历了什么</h2>
+        <pre><code>输入：      (add 2 (subtract 4 2))
+token：    paren/name/number/...
+源 AST：   CallExpression(name, params)
+目标 AST： CallExpression(callee, arguments)
+输出：      add(2, subtract(4, 2));</code></pre>
+        <div class="task">
+          <div class="task-head"><span class="task-number">1</span><h3>先预测，再运行上游测试</h3></div>
+          <ol>
+            <li>只看上面的输入和输出，画出你预测的两棵 AST；标出为什么需要两棵而不是一棵。</li>
+            <li>阅读 <a href="../sources/the-super-tiny-compiler/test.js">上游测试</a>，把预期 token、源 AST、目标 AST 与你的预测逐项比较。</li>
+            <li>运行 <code>node sources/the-super-tiny-compiler/test.js</code>；然后只改一次临时副本中的输入，记录第一处失败发生在哪个阶段。</li>
+            <li>阅读 <a href="../sources/the-super-tiny-compiler/the-super-tiny-compiler.js">带讲解的上游源码</a>，只写阶段输入、输出与限制，不抄函数体。</li>
+          </ol>
+          <p class="deliverable"><strong>交付：</strong>一张“阶段 / 输入 / 输出 / 首要不变量 / 失败证据”五列表。</p>
+        </div>
+        <div class="callout warning"><span class="callout-title">参考实现有意很小</span><p>本地快照固定在提交 <code>d8d40130459d1537f6117a927947cd46c83182b0</code>。它展示主流水线，但未知字符只抛普通异常，未闭合字符串可能越过输入，parser 对 EOF 的诊断也不完整。你的任务是保留教学骨架，同时让失败可定位。</p></div>
+      </section>
+
+      <section class="lesson-section" id="pipeline">
+        <h2>四个核心阶段，加一个横切关注点</h2>
+        <div class="flow-row" aria-label="最小编译流水线"><div class="flow-node">source</div><span class="arrow">→</span><div class="flow-node">tokens</div><span class="arrow">→</span><div class="flow-node">source AST</div><span class="arrow">→</span><div class="flow-node">target AST</div><span class="arrow">→</span><div class="flow-node">code</div></div>
+        <div class="table-wrap"><table><thead><tr><th>阶段</th><th>只负责</th><th>不要偷做</th></tr></thead><tbody>
+          <tr><td>Tokenize</td><td>字符分类、合并词素、记录位置</td><td>不决定调用嵌套关系</td></tr>
+          <tr><td>Parse</td><td>按文法组织源 AST</td><td>不打印目标代码</td></tr>
+          <tr><td>Transform</td><td>把源 AST 语义映射到目标 AST</td><td>不靠字符串拼接隐藏结构</td></tr>
+          <tr><td>Generate</td><td>按目标节点递归打印代码</td><td>不重新猜源语法</td></tr>
+          <tr><td>Diagnostics</td><td>跨阶段保存 source、span、code、message</td><td>不把所有错误压成一个字符串</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="lesson-section" id="grammar">
+        <h2>先写语法，再写循环</h2>
+        <pre><code>Program     := Expression*
+Expression  := Number | String | Call
+Call        := "(" Name Expression* ")"
+
+核心支持：十进制非负整数、双引号字符串、英文字母函数名、任意空白
+核心不支持：运算符、负数、小数、转义、注释、变量、定义、JavaScript 源码</code></pre>
+        <p>这份文法是你的公开契约。若决定扩展，先改文法与测试矩阵，再改实现；不要让某个正则表达式偶然定义语言。</p>
+      </section>
+
+      <section class="lesson-section" id="diagnostic">
+        <h2>前置诊断：闭卷回答</h2>
+        <ol>
+          <li>token 与 AST node 的差异是什么？括号为什么可以成为 token，却不必成为 AST node？</li>
+          <li>为什么 parser 比 tokenizer 更适合决定嵌套调用的父子关系？</li>
+          <li>源 AST 与目标 AST 都叫 <code>CallExpression</code> 时，哪些字段能证明它们仍是不同 schema？</li>
+          <li>深度优先遍历中 <code>enter</code> 与 <code>exit</code> 的可观察顺序是什么？</li>
+          <li>位置的 end 应指向最后一个字符，还是片段后的第一个位置？两种选择对切片有何影响？</li>
+          <li>为什么只断言最终字符串不能证明四个阶段分别正确？</li>
+        </ol>
+        <details><summary>第 3 题提示 1</summary><p>比较源节点的 <code>name / params</code> 与目标节点的 <code>callee / arguments</code>，再看顶层 statement 包装。</p></details>
+        <details><summary>第 5 题提示 1</summary><p>尝试让 <code>source.slice(startOffset, endOffset)</code> 直接得到节点文本。</p></details>
+        <details><summary>第 6 题提示 1</summary><p>想象 tokenizer 错了、parser 又“碰巧”补偿，最终字符串仍正确的情况。</p></details>
+      </section>
+
+      <section class="lesson-section" id="submit">
+        <h2>离开本课前</h2>
+        <ul class="checkpoint-list">
+          <li><input type="checkbox" data-progress="prediction" id="p04l01-a"><label for="p04l01-a">我完成了四阶段预测、观察与修正表。</label></li>
+          <li><input type="checkbox" data-progress="grammar" id="p04l01-b"><label for="p04l01-b">我写下了核心文法、支持项和明确不支持项。</label></li>
+          <li><input type="checkbox" data-progress="contract" id="p04l01-c"><label for="p04l01-c">我能说出每个阶段“不应该做什么”。</label></li>
+          <li><input type="checkbox" data-progress="diagnostic" id="p04l01-d"><label for="p04l01-d">我回答了六个诊断问题并标记不确定项。</label></li>
+          <li><input type="checkbox" data-progress="evidence" id="p04l01-e"><label for="p04l01-e">我为每个阶段选定了至少一个独立测试证据。</label></li>
+        </ul>
+        <div class="callout success"><span class="callout-title">把答案发给我</span><p>把五列表、文法和诊断答案发给我。我会先检查阶段混用与范围漏洞，再决定是否进入 L02；不清楚的任何概念都可以继续追问。</p></div>
+      </section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>先读：</strong><a href="../sources/the-super-tiny-compiler/README.md">The Super Tiny Compiler 本地 README</a> 和 <a href="../sources/the-super-tiny-compiler/the-super-tiny-compiler.js">带讲解的源码</a>。它们是本课流水线的第一手骨架；位置与错误能力会在后续用 ESTree 和 Babel 官方文档校准。</p></div></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0025-p03-acceptance-and-retrospective.html"><small>上一项目</small>P03 验收与复盘</a><a class="next" href="0027-p04-tokenize-with-locations.html"><small>下一课</small>用位置游标切分 token</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>勾选只保存在浏览器本地，不代表 P04 已完成。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/compiler-field-guide.html">编译器速查</a></li><li><a href="../sources/the-super-tiny-compiler/test.js">上游测试</a></li><li><a href="../TASKS.md">学习任务总表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P04-L01 · 先锁定表示与契约，再写转换代码</footer>
+</body>
+</html>

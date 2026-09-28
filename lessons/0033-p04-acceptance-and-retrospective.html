@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P04-L08 最小编译器项目验收与复盘</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P04-L08">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P04 · Lesson 8 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P04 · Acceptance</p>
+        <h1>证明你构建的是可解释、可定位的编译流水线</h1>
+        <p class="lede">P04 的完成证据不是只得到一行 JavaScript，而是四个阶段的独立契约、位置连续性、结构化失败、目标语法验证和对教学模型边界的诚实说明。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">类型：项目验收</span><span class="meta-item">产出：P04 证据包与复盘</span></div>
+      </header>
+
+      <section class="lesson-section" id="behavior"><h2>关卡一：核心行为</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="tokenize" id="p04l08-a"><label for="p04l08-a">tokenizer 识别核心词法并为 token 记录可切片的 end-exclusive span。</label></li>
+        <li><input type="checkbox" data-progress="parse" id="p04l08-b"><label for="p04l08-b">parser 支持 literal、嵌套 call 与多个顶层表达式，节点位置完整。</label></li>
+        <li><input type="checkbox" data-progress="traverse" id="p04l08-c"><label for="p04l08-c">traverser 的 enter/exit、parent、child order 与未知节点策略有轨迹证明。</label></li>
+        <li><input type="checkbox" data-progress="transform" id="p04l08-d"><label for="p04l08-d">transformer 正确区分源/目标 schema、顶层 context 与 synthetic wrapper。</label></li>
+        <li><input type="checkbox" data-progress="generate" id="p04l08-e"><label for="p04l08-e">generator 稳定输出合法 JavaScript，字符串与标点规则明确。</label></li>
+        <li><input type="checkbox" data-progress="errors" id="p04l08-f"><label for="p04l08-f">非法 token、EOF 语法错误和未知 AST 节点产生可定位结构化诊断。</label></li>
+      </ul></section>
+
+      <section class="lesson-section" id="tests"><h2>关卡二：测试证明阶段与连接</h2>
+        <div class="table-wrap"><table><thead><tr><th>证据包</th><th>最低内容</th><th>审阅问题</th></tr></thead><tbody>
+          <tr><td>阶段单元测试</td><td>tokenize、parse、traverse、transform、generate</td><td>失败能否落到单一职责？</td></tr>
+          <tr><td>集成测试</td><td>相邻 schema 连接和 source→code</td><td>是否避免只靠一个 hello world？</td></tr>
+          <tr><td>负向测试</td><td>未知字符、未闭合字符串/call、缺 name、未知 node</td><td>是否断言 phase/code/loc？</td></tr>
+          <tr><td>位置测试</td><td>跨行 token、literal、nested call、EOF</td><td>span 是否可切片且连续？</td></tr>
+          <tr><td>目标验证</td><td>generated code 通过 JavaScript parser</td><td>文本相等外是否还有独立 oracle？</td></tr>
+          <tr><td>确定性测试</td><td>相同输入的 tokens、AST、code 一致</td><td>阶段是否意外修改输入？</td></tr>
+        </tbody></table></div>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>整理可重复运行的证据</h3></div><ol>
+          <li>记录 Node、包管理器、测试框架和目标 parser 版本。</li>
+          <li>给出干净环境安装、测试和编译示例的精确命令。</li>
+          <li>保存测试矩阵与摘要，不只给绿色截图。</li>
+          <li>保存一个成功输入的 source→tokens→两棵 AST→code 轨迹。</li>
+          <li>保存一个跨行失败输入的结构化诊断和人类可读渲染。</li>
+        </ol><p class="deliverable"><strong>交付：</strong>命令、环境、矩阵、成功轨迹与失败诊断。</p></div>
+      </section>
+
+      <section class="lesson-section" id="explain"><h2>关卡三：十分钟闭卷讲解</h2><ol>
+        <li>写出核心文法，并解释 tokenizer 为什么不建立嵌套关系。</li>
+        <li>手演一次跨行输入的位置游标。</li>
+        <li>手演嵌套 call 的 parseExpression 调用与 token 消费。</li>
+        <li>画 enter/exit 轨迹，解释 parent 和 child order。</li>
+        <li>比较源 Call 与目标 Call schema，并说明顶层 wrapper。</li>
+        <li>解释 generator 的分号、逗号、引号责任。</li>
+        <li>展示两个不同 phase 的诊断为何具有相同外形、不同 code。</li>
+      </ol><div class="task"><div class="task-head"><span class="task-number">2</span><h3>录音、录屏或现场讲给我</h3></div><p>第一次不看教程。卡住时记录卡在表示、游标、递归、遍历顺序还是诊断边界；补最小实验后再讲一次。</p><p class="deliverable"><strong>交付：</strong>第一次缺口与第二次改进记录。</p></div></section>
+
+      <section class="lesson-section" id="diagram"><h2>关卡四：三张图互相对得上</h2><div class="concept-grid">
+        <div class="card"><b>流水线图</b><p>每条边标出数据 schema，不只写函数名。</p></div>
+        <div class="card"><b>AST 对照图</b><p>同一 call 在源树与目标树的字段、wrapper 和 loc。</p></div>
+        <div class="card"><b>位置传播图</b><p>source → token span → source node loc → target provenance。</p></div>
+        <div class="card"><b>错误流图</b><p>失败 phase、code、loc 如何进入 formatter。</p></div>
+      </div><p>若图与测试夹具对不上，先修正第一处 schema 或位置错位，不要用最终字符串掩盖问题。</p></section>
+
+      <section class="lesson-section" id="boundary"><h2>关卡五：模型边界声明</h2><ul>
+        <li>核心语法只支持哪些数字、字符串、名字、调用与空白；</li>
+        <li>是否允许跨行字符串、转义、空输入与多个顶层表达式；</li>
+        <li>位置采用何种 line/column/index 与 end 约定；</li>
+        <li>错误是 fail-fast 还是恢复；核心实现不应误称支持多错误恢复；</li>
+        <li>目标 AST 与 ESTree/Babel AST 的相似和不兼容之处；</li>
+        <li>为什么 location 不等于 source map；</li>
+        <li>不包含作用域、符号表、类型检查、优化、模块、完整 JavaScript 解析和生产级安全性。</li>
+      </ul></section>
+
+      <section class="lesson-section" id="extension"><h2>验收后只选一个提高项</h2>
+        <div class="table-wrap"><table><thead><tr><th>提高项</th><th>新增核心概念</th><th>先补的证据</th></tr></thead><tbody>
+          <tr><td>常量折叠</td><td>纯度、求值语义、优化前后等价</td><td>差分与负向测试</td></tr>
+          <tr><td>变量与作用域</td><td>binding、scope stack、符号表</td><td>遮蔽与未定义引用</td></tr>
+          <tr><td>错误恢复</td><td>同步 token、多个 diagnostics</td><td>错误后仍能找到下一语句</td></tr>
+          <tr><td>source map</td><td>生成位置到源位置的 segment mapping</td><td>生成代码位置回查</td></tr>
+          <tr><td>JSX/TS 子集</td><td>更大文法、歧义、目标语义</td><td>先写精确子集与 parser tests</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="lesson-section" id="retrospective"><h2>复盘问题</h2><ol>
+        <li>哪个阶段最容易把责任偷渡到相邻阶段？你如何发现？</li>
+        <li>哪个位置 bug 最难找？最小复现是什么？</li>
+        <li>哪条测试最能防止“最终输出碰巧正确”的假阳性？</li>
+        <li>上游教学实现中，你保留了什么，主动修正了什么？</li>
+        <li>若重新开始，你会先固定哪个 schema 或不变量？</li>
+        <li>P04 的心智模型将如何帮助你理解 Babel、TypeScript、lint 或模板编译器？</li>
+      </ol><div class="callout success"><span class="callout-title">完成标记规则</span><p>把证据包和复盘发给我审阅。只有核心行为、共同完成定义与闭卷讲解都通过后，才在 <code>TASKS.md</code> 把 P04 标为完成并写 learning record。</p></div></section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>回看：</strong><a href="../sources/the-super-tiny-compiler/README.md">The Super Tiny Compiler</a>、<a href="https://github.com/estree/estree/blob/master/es5.md#node-objects">ESTree locations</a>、<a href="https://babeljs.io/docs/babel-parser">Babel Parser</a> 与 <a href="https://babeljs.io/docs/babel-generator">Babel Generator</a>。遇到任何验收项不确定，带着最小证据来问我。</p></div></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0032-p04-integrate-pipeline-diagnostics.html"><small>上一课</small>流水线与诊断</a><a class="next" href="../TASKS.md"><small>返回总表</small>选择下一步</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 6</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>六项核心行为只是第一关，还要提交测试、图和复盘。</p></section><section class="side-panel"><h2>证据入口</h2><ul class="side-links"><li><a href="../reference/compiler-field-guide.html">编译器速查</a></li><li><a href="../sources/the-super-tiny-compiler/test.js">上游基线测试</a></li><li><a href="../TASKS.md">共同完成定义</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P04-L08 · 完成意味着能证明、解释并诚实描述边界</footer>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P04-L02 用位置游标切分 token</title>
+  <link rel="stylesheet" href="../assets/course.css">
+  <script src="../assets/lesson.js" defer></script>
+</head>
+<body data-lesson="P04-L02">
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P04 · Lesson 2 / 8</span></div></header>
+  <div class="page-shell">
+    <main class="lesson">
+      <header class="lesson-hero">
+        <p class="eyebrow">P04 · Lexical Analysis</p>
+        <h1>让每个 token 都能指回源文本</h1>
+        <p class="lede">你将用单向游标识别括号、数字、字符串和名字，同时维护 offset、line、column。正确 token 不只携带 value，还要成为后续 AST 与错误诊断的位置证据。</p>
+        <div class="meta-strip"><span class="meta-item">60–90 分钟</span><span class="meta-item">方法：测试驱动</span><span class="meta-item">产出：tokenizer、位置测试、词法错误</span></div>
+      </header>
+
+      <section class="lesson-section"><h2>本节目标</h2><div class="objectives">
+        <div class="objective"><b>维护统一游标</b><p>每消费一个字符，offset、line、column 同步推进。</p></div>
+        <div class="objective"><b>保存半开区间</b><p>token span 使用 start-inclusive、end-exclusive，能够直接切片回源。</p></div>
+        <div class="objective"><b>识别最长词素</b><p>连续数字或字母只产生一个 token。</p></div>
+        <div class="objective"><b>词法失败可定位</b><p>未知字符和未闭合字符串返回稳定错误码与位置。</p></div>
+      </div></section>
+
+      <section class="lesson-section" id="location"><h2>先固定位置约定</h2>
+        <div class="table-wrap"><table><thead><tr><th>字段</th><th>约定</th><th>用途</th></tr></thead><tbody>
+          <tr><td><code>offset</code></td><td>从 0 开始的源码索引</td><td>直接切片、排序和计算 span</td></tr>
+          <tr><td><code>line</code></td><td>从 1 开始</td><td>符合编辑器与 ESTree 常见展示</td></tr>
+          <tr><td><code>column</code></td><td>从 0 开始</td><td>符合 ESTree Position</td></tr>
+          <tr><td><code>loc.end</code></td><td>被消费片段后的第一个位置</td><td><code>slice(start, end)</code> 无需加一</td></tr>
+        </tbody></table></div>
+        <div class="callout"><span class="callout-title">换行不只是 whitespace</span><p>它虽然不形成 token，却会把 line 加一并把 column 归零。先约定核心课只处理 <code>\n</code>，还是也规范化 <code>\r\n</code>；测试必须反映你的选择。</p></div>
+      </section>
+
+      <section class="lesson-section" id="red"><h2>任务拆解：从 RED 开始</h2>
+        <div class="task"><div class="task-head"><span class="task-number">1</span><h3>为 token 形状写表驱动测试</h3></div><ol>
+          <li>单字符：<code>(</code>、<code>)</code>。</li>
+          <li>连续词素：<code>123</code>、<code>subtract</code>。</li>
+          <li>混合输入：空格、tab 和跨行嵌套调用。</li>
+          <li>字符串：空字符串、含空格字符串、跨行是否允许。</li>
+          <li>对每个 token 同时断言 type、value、start、end，并验证源码切片。</li>
+        </ol><p class="deliverable"><strong>检查点：</strong>先看到测试因为“没有位置字段”而失败，而不是因为测试本身无法运行。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">2</span><h3>只实现一个推进原语</h3></div><p>把“读取当前字符”和“消费一个字符后更新三个坐标”分开。所有 token 分支都必须走同一个推进原语，避免数字、字符串、空白各自复制换行逻辑。</p>
+          <pre><code>位置 := { offset, line, column }
+consume():
+  读取当前字符
+  offset 前进
+  若字符是换行：line 前进，column 归零
+  否则：column 前进
+  返回字符</code></pre>
+          <p class="deliverable"><strong>检查点：</strong>跨行 token 后的下一个 token 起点正确。</p></div>
+        <div class="task"><div class="task-head"><span class="task-number">3</span><h3>最后补负向路径</h3></div><ol>
+          <li>未知字符：例如核心文法外的 <code>@</code>。</li>
+          <li>到达 EOF 仍未找到结束引号。</li>
+          <li>错误至少包含 <code>phase=tokenize</code>、稳定 <code>code</code>、message、start/end 和 sourceName。</li>
+          <li>断言字段，不对完整人类文案做脆弱快照。</li>
+        </ol><p class="deliverable"><strong>交付：</strong>正例矩阵、两个负向测试及一张游标状态表。</p></div>
+      </section>
+
+      <section class="lesson-section" id="hints"><h2>逐级提示</h2>
+        <details><summary>提示 1：怎样捕获 token 的 start？</summary><p>进入某个 token 分支时先复制当前位置；消费完整词素后再复制 end。不要让 start 指向可变游标对象。</p></details>
+        <details><summary>提示 2：怎样避免 EOF 上的正则陷阱？</summary><p>循环条件先明确检查游标是否仍小于输入长度，再测试当前字符；不要让 <code>undefined</code> 悄悄进入字符串 value。</p></details>
+        <details><summary>提示 3：怎样表示错误？</summary><p>考虑一个共享诊断记录或自定义错误类型；测试关心结构字段，CLI/界面再负责渲染带插入符的文本。</p></details>
+      </section>
+
+      <section class="lesson-section" id="check"><h2>自查问题</h2><ol>
+        <li>为什么不能只在产生 token 时更新行列？</li>
+        <li>空白没有 token，为什么仍必须消费并更新位置？</li>
+        <li><code>123abc</code> 在你的文法里是两个 token、一个非法词素，还是别的结果？契约是否明确？</li>
+        <li>字符串 token 的 span 包含引号吗？value 包含引号吗？为什么可以不同？</li>
+        <li>你能用任一 token 的 offset span 精确切回原始 lexeme 吗？</li>
+      </ol></section>
+
+      <section class="lesson-section" id="accept"><h2>验收标准</h2><ul class="checkpoint-list">
+        <li><input type="checkbox" data-progress="types" id="p04l02-a"><label for="p04l02-a">四类 token 与空白处理通过表驱动测试。</label></li>
+        <li><input type="checkbox" data-progress="loc" id="p04l02-b"><label for="p04l02-b">跨行输入的 offset、line、column 与 end-exclusive span 正确。</label></li>
+        <li><input type="checkbox" data-progress="slice" id="p04l02-c"><label for="p04l02-c">每个 token 都能用 span 切回原始 lexeme。</label></li>
+        <li><input type="checkbox" data-progress="errors" id="p04l02-d"><label for="p04l02-d">未知字符与未闭合字符串产生不同稳定错误码。</label></li>
+        <li><input type="checkbox" data-progress="explain" id="p04l02-e"><label for="p04l02-e">我能手演一次跨行输入的游标变化。</label></li>
+      </ul><div class="callout success"><span class="callout-title">需要审阅时</span><p>把测试矩阵、一个 token 样例、两个错误对象和游标手演发给我。我会先查边界与假阳性，不会直接补全 tokenizer。</p></div></section>
+
+      <section class="lesson-section" id="source"><h2>首要资料</h2><div class="source-card"><p><strong>对照：</strong><a href="../sources/the-super-tiny-compiler/the-super-tiny-compiler.js">上游 tokenizer</a> 用于观察单游标词法分析；<a href="https://github.com/estree/estree/blob/master/es5.md#node-objects">ESTree Node objects</a> 用于统一位置约定。它们是参考，不是要求复制的数据结构。</p></div></section>
+      <section class="lesson-section"><nav class="lesson-nav" aria-label="课程导航"><a href="0026-p04-observe-compiler-contract.html"><small>上一课</small>观察编译器契约</a><a class="next" href="0028-p04-parse-source-ast.html"><small>下一课</small>递归解析源 AST</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>本课进度 <span data-progress-label>0 / 5</span></h2><div class="progress-track"><div class="progress-fill" data-progress-fill></div></div><p>先让位置测试变红，再实现游标。</p></section><section class="side-panel"><h2>随手查</h2><ul class="side-links"><li><a href="../reference/compiler-field-guide.html#locations">位置约定</a></li><li><a href="../sources/the-super-tiny-compiler/the-super-tiny-compiler.js">上游源码</a></li><li><a href="../TASKS.md">任务总表</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P04-L02 · token 是词法结果，也是后续诊断的坐标锚点</footer>
+</body>
+</html>

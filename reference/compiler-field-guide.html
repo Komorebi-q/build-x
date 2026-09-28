@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>P04 最小编译器机制速查</title>
+  <link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+  <header class="topbar"><div class="topbar-inner"><a class="brand" href="../TASKS.md">Build X Learning</a><span class="course-tag">P04 · Field Guide</span></div></header>
+  <div class="page-shell">
+    <main class="reference-page">
+      <header class="lesson-hero">
+        <p class="eyebrow">P04 · 随查文档</p>
+        <h1>最小编译器机制速查</h1>
+        <p class="lede">把 tokenizer、parser、traverser、transformer、generator、source location 与 diagnostics 压缩到一页。它描述课程的极小语言，不代表完整 JavaScript 编译器。</p>
+        <div class="meta-strip"><span class="meta-item">Super Tiny Compiler 骨架</span><span class="meta-item">ESTree 位置约定</span><span class="meta-item">适合打印</span></div>
+      </header>
+
+      <section class="reference-section" id="pipeline"><h2>一、总流水线</h2>
+        <div class="flow-row" aria-label="编译器流水线"><div class="flow-node">source</div><span class="arrow">→</span><div class="flow-node">tokens</div><span class="arrow">→</span><div class="flow-node">source AST</div><span class="arrow">→</span><div class="flow-node">target AST</div><span class="arrow">→</span><div class="flow-node">code</div></div>
+        <div class="table-wrap"><table><thead><tr><th>阶段</th><th>输入</th><th>输出</th><th>关键不变量</th></tr></thead><tbody>
+          <tr><td>Tokenize</td><td>source + sourceName</td><td>有位置的 tokens</td><td>每个已识别字符恰好消费一次</td></tr>
+          <tr><td>Parse</td><td>tokens</td><td>source AST</td><td>一次 parseExpression 恰好消费一个表达式</td></tr>
+          <tr><td>Traverse</td><td>source AST + visitor</td><td>有序 enter/exit 事件</td><td>每个已知节点恰好进入和退出一次</td></tr>
+          <tr><td>Transform</td><td>source AST</td><td>target AST</td><td>语义保持，schema 改变，来源可追溯</td></tr>
+          <tr><td>Generate</td><td>target AST</td><td>target code</td><td>局部打印规则可组合且输出确定</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="reference-section" id="grammar"><h2>二、核心语言文法与边界</h2>
+        <pre><code>Program     := Expression*
+Expression  := Number | String | Call
+Call        := "(" Name Expression* ")"</code></pre>
+        <div class="table-wrap"><table><thead><tr><th>核心支持</th><th>核心不支持</th></tr></thead><tbody>
+          <tr><td>非负十进制整数、双引号字符串</td><td>负数、小数、运算符、注释</td></tr>
+          <tr><td>英文字母函数名</td><td>变量、定义、属性访问、Unicode 标识符</td></tr>
+          <tr><td>括号调用、嵌套、多个顶层表达式</td><td>作用域、类型、模块、控制流</td></tr>
+          <tr><td>已声明的空白和换行策略</td><td>完整 Lisp、C 或 JavaScript 兼容</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="reference-section" id="locations"><h2>三、Source location 约定</h2>
+        <pre><code>Position := { offset, line, column }
+SourceLocation := { source, start, end }
+
+offset: 0-based
+line:   1-based
+column: 0-based
+span:   [start, end)  // end-exclusive</code></pre>
+        <ul>
+          <li>半开区间允许直接用 <code>source.slice(start.offset, end.offset)</code> 回取文本。</li>
+          <li>换行即使被词法阶段跳过，也必须更新 line/column。</li>
+          <li>父节点 span 覆盖完整子结构；Call 包含左右括号。</li>
+          <li>synthetic target node 没有精确源字符时，应明确继承、标记 generated 或使用 origin，而不是伪造位置。</li>
+        </ul>
+      </section>
+
+      <section class="reference-section" id="tokenizer"><h2>四、Tokenizer 决策顺序</h2>
+        <ol class="decision-tree">
+          <li>到达 EOF：返回 tokens。</li>
+          <li>括号：消费一个字符，产生 paren token。</li>
+          <li>空白：只消费并更新位置，不产生 token。</li>
+          <li>数字或字母：最长匹配连续字符，产生一个 token。</li>
+          <li>引号：读到成对结束引号；EOF 前未闭合则词法错误。</li>
+          <li>其余字符：UNKNOWN_CHARACTER，位置指向该字符。</li>
+        </ol>
+        <div class="callout"><span class="callout-title">token span 与 value 不同</span><p>字符串 token 的 span 可以包含两侧引号，而 value 只保存内容。位置来自实际消费，不能用 value.length 倒推。</p></div>
+      </section>
+
+      <section class="reference-section" id="parser"><h2>五、Parser 消费不变量</h2>
+        <div class="table-wrap"><table><thead><tr><th>函数</th><th>前置</th><th>成功后</th><th>主要失败</th></tr></thead><tbody>
+          <tr><td>parseProgram</td><td>cursor 在首 token</td><td>cursor 到 EOF</td><td>表达式级错误向上传播</td></tr>
+          <tr><td>parseExpression</td><td>cursor 在表达式起点</td><td>消费恰好一个完整表达式</td><td>EOF / unexpected token / close paren</td></tr>
+          <tr><td>parseCall</td><td>cursor 在 <code>(</code></td><td>消费匹配的 <code>)</code></td><td>缺 name / 未闭合 call</td></tr>
+        </tbody></table></div>
+        <p>EOF 必须是显式状态。需要 token 的位置先检查 EOF，再读 <code>type</code>；未闭合结构同时保留 EOF 主位置与结构起点。</p>
+      </section>
+
+      <section class="reference-section" id="traversal"><h2>六、Traversal 契约</h2>
+        <pre><code>visit(node, parent):
+  调用 visitor[node.type]?.enter(node, parent)
+  按 node schema 与数组顺序访问孩子
+  调用 visitor[node.type]?.exit(node, parent)</code></pre>
+        <div class="table-wrap"><table><thead><tr><th>节点</th><th>child keys</th><th>parent</th></tr></thead><tbody>
+          <tr><td>Program</td><td>body</td><td>null</td></tr>
+          <tr><td>Source CallExpression</td><td>params</td><td>拥有它的 Program 或 Call</td></tr>
+          <tr><td>NumberLiteral / StringLiteral</td><td>无</td><td>拥有它的 Program 或 Call</td></tr>
+        </tbody></table></div>
+        <p>缺 visitor handler：允许，仍遍历孩子。未知 node type：结构错误，不能静默跳过。</p>
+      </section>
+
+      <section class="reference-section" id="transform"><h2>七、源 AST → 目标 AST</h2>
+        <div class="table-wrap"><table><thead><tr><th>源</th><th>目标</th><th>位置/provenance</th></tr></thead><tbody>
+          <tr><td>Program(body)</td><td>Program(body)</td><td>覆盖整体或继承 root</td></tr>
+          <tr><td>Number/StringLiteral</td><td>同语义 literal</td><td>继承源 literal</td></tr>
+          <tr><td>Call(name, params)</td><td>Call(Identifier(name), arguments)</td><td>call 继承；Identifier 指向 name span</td></tr>
+          <tr><td>顶层 expression</td><td>ExpressionStatement(expression)</td><td>synthetic wrapper 规则必须明确</td></tr>
+        </tbody></table></div>
+        <ul>
+          <li>源与目标 schema 分开命名或类型化。</li>
+          <li>顶层 statement context 与嵌套 expression context 不同。</li>
+          <li>转换应保持参数顺序与字面量值。</li>
+          <li>若使用源节点临时 <code>_context</code>，要记录污染、重复运行与类型边界；更稳妥的显式策略可作为改进。</li>
+        </ul>
+      </section>
+
+      <section class="reference-section" id="generator"><h2>八、Generator 打印责任</h2>
+        <div class="table-wrap"><table><thead><tr><th>节点</th><th>只负责</th></tr></thead><tbody>
+          <tr><td>Program</td><td>连接 statements，决定行分隔</td></tr>
+          <tr><td>ExpressionStatement</td><td>打印 expression 与结尾分号</td></tr>
+          <tr><td>CallExpression</td><td>callee、括号与 argument 分隔</td></tr>
+          <tr><td>Identifier</td><td>name</td></tr>
+          <tr><td>NumberLiteral</td><td>规范数字文本</td></tr>
+          <tr><td>StringLiteral</td><td>可靠引用与转义后的字符串文本</td></tr>
+        </tbody></table></div>
+        <p>使用两类 oracle：少量精确文本断言负责格式；目标 JavaScript parser 负责语法合法性。相同 AST 的输出必须确定且不修改 AST。</p>
+      </section>
+
+      <section class="reference-section" id="diagnostics"><h2>九、结构化诊断</h2>
+        <pre><code>{
+  phase,
+  code,
+  message,
+  sourceName,
+  loc: { start, end },
+  details?
+}</code></pre>
+        <div class="table-wrap"><table><thead><tr><th>现象</th><th>优先错误码/检查点</th></tr></thead><tbody>
+          <tr><td>未知字符</td><td>tokenize / UNKNOWN_CHARACTER</td></tr>
+          <tr><td>字符串读到 EOF</td><td>tokenize / UNTERMINATED_STRING</td></tr>
+          <tr><td>调用括号后不是 name</td><td>parse / EXPECTED_CALL_NAME</td></tr>
+          <tr><td>调用读到 EOF</td><td>parse / UNTERMINATED_CALL</td></tr>
+          <tr><td>顶层多余右括号</td><td>parse / UNEXPECTED_CLOSE_PAREN</td></tr>
+          <tr><td>未知源 AST 节点</td><td>transform / UNKNOWN_NODE_TYPE</td></tr>
+          <tr><td>未知目标 AST 节点</td><td>generate / UNKNOWN_NODE_TYPE</td></tr>
+        </tbody></table></div>
+        <p>测试稳定字段；formatter 单独把 sourceName、行文本和 caret 渲染成人类提示。核心采用 fail-fast，不声称错误恢复。</p>
+      </section>
+
+      <section class="reference-section" id="debug"><h2>十、现象到不变量</h2>
+        <div class="table-wrap"><table><thead><tr><th>现象</th><th>先检查</th></tr></thead><tbody>
+          <tr><td>跨行后列号继续累加</td><td>consume 是否统一处理换行</td></tr>
+          <tr><td>未闭合字符串卡死或加入 undefined</td><td>字符串循环是否先检查 EOF</td></tr>
+          <tr><td>嵌套 call 吃掉外层右括号</td><td>每层 parseCall 是否只消费自己的结束符</td></tr>
+          <tr><td>visitor 少访问或重复访问</td><td>child-key schema 与数组遍历顺序</td></tr>
+          <tr><td>顶层 call 没分号或参数 call 多分号</td><td>ExpressionStatement context 是否正确</td></tr>
+          <tr><td>字符串输出语法错误</td><td>generator 是否可靠转义而非手工包引号</td></tr>
+          <tr><td>错误只有 TypeError 无位置</td><td>失败是否统一进入 Diagnostic factory</td></tr>
+          <tr><td>最终输出对但中间 AST 错</td><td>是否缺少阶段测试，被后续阶段碰巧补偿</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="reference-section" id="boundaries"><h2>十一、教学模型边界</h2><ul>
+        <li>该编译器不解析 JavaScript；输出只是一个极小 JavaScript 表达式语句子集。</li>
+        <li>ESTree 风格 location 不表示自定义 AST 完全兼容 ESTree。</li>
+        <li>位置记录只说明源节点来自哪里；source map 还要记录生成代码 segment 到源位置的映射。</li>
+        <li>核心没有作用域、符号表、类型检查、优化、模块、宏、错误恢复或增量编译。</li>
+        <li>扩展语法前先改 grammar、AST schema、diagnostics 与测试矩阵。</li>
+      </ul></section>
+
+      <section class="reference-section" id="sources"><h2>十二、对照来源</h2><div class="source-card"><p><strong>课程骨架：</strong><a href="../sources/the-super-tiny-compiler/README.md">The Super Tiny Compiler 本地快照</a>。<strong>位置模型：</strong><a href="https://github.com/estree/estree/blob/master/es5.md#node-objects">ESTree Node objects</a>。<strong>生产接口对照：</strong><a href="https://babeljs.io/docs/babel-parser">Babel Parser</a>、<a href="https://babeljs.io/docs/babel-traverse">Traverse</a> 与 <a href="https://babeljs.io/docs/babel-generator">Generator</a>。<strong>语言复杂度边界：</strong><a href="https://tc39.es/ecma262/multipage/ecmascript-language-lexical-grammar.html">ECMAScript Lexical Grammar</a>。</p></div></section>
+
+      <section class="reference-section"><nav class="lesson-nav" aria-label="课程导航"><a href="../lessons/0026-p04-observe-compiler-contract.html"><small>返回课程</small>P04 第一课</a><a class="next" href="../TASKS.md"><small>返回总表</small>学习任务总表</a></nav></section>
+    </main>
+    <aside class="sidebar"><section class="side-panel"><h2>使用方式</h2><p>先凭记忆写 schema、轨迹或错误字段，再用本页校正。遇到 bug 时先定位阶段与不变量。</p></section><section class="side-panel"><h2>页内目录</h2><ul class="side-links"><li><a href="#pipeline">流水线</a></li><li><a href="#locations">位置</a></li><li><a href="#tokenizer">Tokenizer</a></li><li><a href="#parser">Parser</a></li><li><a href="#traversal">Traversal</a></li><li><a href="#transform">Transform</a></li><li><a href="#generator">Generator</a></li><li><a href="#diagnostics">Diagnostics</a></li><li><a href="#debug">排查</a></li></ul></section></aside>
+  </div>
+  <footer class="page-footer">P04 最小编译器机制速查 · 阶段、schema、位置与诊断分开验证</footer>
+</body>
+</html>
