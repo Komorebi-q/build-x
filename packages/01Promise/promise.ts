@@ -43,10 +43,6 @@ export const PromiseLike = (
 
   let reactions: Reaction[] = [];
 
-  const clearReactions = () => {
-    reactions = [];
-  };
-
   const then = (
     fulfilledCallback?: FulfillCallback,
     rejectedCallback?: RejectCallback,
@@ -100,6 +96,37 @@ export const PromiseLike = (
 
     return child;
   };
+  const getSnapshot = (): State => {
+    switch (status) {
+      case "fulfilled": {
+        return {
+          status,
+          value,
+        };
+      }
+      case "rejected": {
+        return {
+          status,
+          reason,
+        };
+      }
+      case "pending":
+      default: {
+        return {
+          status,
+        };
+      }
+    }
+  };
+
+  const self = {
+    getSnapshot,
+    then,
+  };
+  const clearReactions = () => {
+    reactions = [];
+  };
+
   const finalFulfill = (finalValue: any) => {
     if (status !== "pending") return;
     status = "fulfilled";
@@ -141,6 +168,11 @@ export const PromiseLike = (
     // same saved value once while preserving `candidate` as its `this` value.
     let then: unknown;
     try {
+      if (self === candidate) {
+        innerReject(new TypeError("A promise cannot be resolved with itself."));
+        return;
+      }
+
       then =
         candidate !== null && ["object", "function"].includes(typeof candidate)
           ? candidate.then
@@ -176,28 +208,6 @@ export const PromiseLike = (
     capabilityLocked = true;
     innerReject(rejectedReason);
   };
-  const getSnapshot = (): State => {
-    switch (status) {
-      case "fulfilled": {
-        return {
-          status,
-          value,
-        };
-      }
-      case "rejected": {
-        return {
-          status,
-          reason,
-        };
-      }
-      case "pending":
-      default: {
-        return {
-          status,
-        };
-      }
-    }
-  };
 
   try {
     executor(resolve, reject);
@@ -205,8 +215,5 @@ export const PromiseLike = (
     reject(e);
   }
 
-  return {
-    getSnapshot,
-    then,
-  };
+  return self;
 };
