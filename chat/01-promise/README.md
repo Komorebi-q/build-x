@@ -269,6 +269,8 @@ Parameters<PromiseExecutor>[1] → reject capability
 - `0f4121c`：更新 handoff 与本文件，把 L05 已覆盖的 thenable 行为与遗留项写进 playbook。
 - `27cfbcc`：补上 L05 剩余的 focused test，形成 51 条基线，并加入 `self === candidate` 的 `TypeError` 守卫。
 - `fee5a87`：三条 guard test 锁定 public capability 双向竞争与 local guard 作用域，形成 54 条基线，并补上 `PHASE-3.md`、学习记录 0003 与 `TASKS.md` 进度同步。
+- `282b283`：忽略本机 pnpm store（`.pnpm-store/`），并回填上一个检查点的 commit 哈希。
+- `1332f29`：按功能重排 Promise 测试文件——顶层拆成 state machine / scheduling / child Promise / thenable resolution 四组，子 describe 对应不变量；断言零改动（去缩进行多重集比较 + 54 条运行时测试名逐一核对），并同步 `PHASE-3.md` 与本文件的测试组表格。
 
 详细阶段记录：
 
