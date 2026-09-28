@@ -268,7 +268,7 @@ Parameters<PromiseExecutor>[1] → reject capability
 - `29684f3`：补齐 saved `then` 调用阶段的异常处理，并用 callback/throw 竞争测试锁定 thenable-local once guard。
 - `0f4121c`：更新 handoff 与本文件，把 L05 已覆盖的 thenable 行为与遗留项写进 playbook。
 - `27cfbcc`：补上 L05 剩余的 focused test，形成 51 条基线，并加入 `self === candidate` 的 `TypeError` 守卫。
-- 本轮提交（L05 收束）：三条 guard test 锁定 public capability 双向竞争与 local guard 作用域，形成 54 条基线，并补上 `PHASE-3.md`、学习记录 0003 与 `TASKS.md` 进度同步。
+- `fee5a87`：三条 guard test 锁定 public capability 双向竞争与 local guard 作用域，形成 54 条基线，并补上 `PHASE-3.md`、学习记录 0003 与 `TASKS.md` 进度同步。
 
 详细阶段记录：
 
