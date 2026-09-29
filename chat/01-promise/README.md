@@ -2,7 +2,7 @@
 
 > 用途：在新机器、新 Codex 任务或上下文丢失后，恢复当前 Promise 学习项目的协作纪律、验证方式和准确进度。
 >
-> 最后更新：2026-09-28
+> 最后更新：2026-09-29
 
 ## 新任务启动方式
 
@@ -22,9 +22,10 @@
 - packages/01Promise/PHASE-1.md
 - packages/01Promise/PHASE-2.md
 - packages/01Promise/PHASE-3.md
+- packages/01Promise/PHASE-4.md
 
 然后检查 packages/01Promise 的当前实现、测试、git status 和最近提交。
-遵循 playbook：我亲自写练习源码和测试；你负责讲解、拆解、审阅、验证与复盘。每次只给一个最小任务，不要直接替我实现。先报告当前精确状态，再从 README 记录的“下一步”继续。
+遵循 playbook：我亲自写练习源码和测试；你负责讲解、拆解、审阅、验证与复盘。每次只给一个最小任务并给出明确测试名，不要直接替我实现。先报告当前精确状态，再从 README 的“当前活动状态”继续。
 ```
 
 ## 不可破坏的协作边界
@@ -150,7 +151,8 @@ git diff --cached --name-status
 仓库目前没有 `.nvmrc`、`.node-version` 或 `packageManager` 字段，因此新机器不能从配置文件自动恢复工具版本。本项目已实际验证过以下环境组合：
 
 ```text
-本轮 fresh verification：Node.js v25.9.0，pnpm 9.0.5
+当前 fresh verification：Node.js v26.10.0，pnpm 12.6.0
+此前 checkpoint：Node.js v25.9.0，pnpm 9.0.5
 此前 checkpoint：Node.js v22.17.1，pnpm 10.32.1
 更早 checkpoint：Node.js v24.14.0，pnpm 9.0.5
 packages/01Promise/pnpm-lock.yaml: lockfileVersion 9.0
@@ -259,7 +261,96 @@ Parameters<PromiseExecutor>[1] → reject capability
 
 ## 当前项目 handoff
 
-### 已提交检查点
+### 当前活动状态（2026-09-29）
+
+当前位于 **P01-L08 · Promise 项目验收与复盘**。L06 微任务对齐和 L07 Promises/A+ 外部验收已经完成，阶段证据记录在 `packages/01Promise/PHASE-4.md`；`TASKS.md` 尚未勾选 L06、L07、L08 或 P01，等待最终验收后统一更新。P01-L01 的历史勾选状态仍待核对。
+
+当前分支为 `main`，跟踪 `origin/main`。本轮改动尚未 commit 或 push：
+
+```text
+M  chat/01-promise/README.md
+M  packages/01Promise/package.json
+M  packages/01Promise/pnpm-lock.yaml
+M  packages/01Promise/promise.test.ts
+M  packages/01Promise/promise.ts
+?? packages/01Promise/PHASE-4.md
+?? packages/01Promise/promise-aplus.test.ts
+?? packages/01Promise/promises-aplus-tests.d.ts
+```
+
+#### L06：微任务调度
+
+新增三条使用默认 runtime scheduler 的完整顺序测试：
+
+- `runs interleaved native and custom promise reactions in FIFO order`：`sync-end → mine-1 → np-1 → mine-2 → np-2`；
+- `runs pending reactions before timer tasks after synchronous settlement`：`sync-end → handler → timeout`；
+- `preserves FIFO order for native and custom reactions around pending settlement`：`sync-end → np before → mp → np after → timeout`。
+
+结论：本阶段覆盖的场景中，使用 `queueMicrotask` 的手写 Promise 与原生 Promise 都进入同一微任务 FIFO。pending handler 在注册时只进入 Promise reaction queue，settlement 时才进入 runtime microtask queue。若改用 timer scheduler，才会出现可观察顺序差异。
+
+#### L07：Promises/A+ 验收
+
+`promise.ts` 导出薄 `adapter.deferred()`，每次返回独立的 `{ promise, resolve, reject }`。adapter 只捕获公开 executor capabilities，不包含状态机、reaction 或 resolution 逻辑。
+
+adapter 最初出现过参数遮蔽：executor 参数与外层 capability 保存槽同名，形成自赋值，导致返回的 resolve / reject 仍是 noop，Promise 永久 pending。改用不同名称后关闭该问题，并由两条 adapter smoke tests 验证状态转换、handler 时机、引用身份和实例独立性。
+
+项目通过 Vitest 调用 `promises-aplus-tests@2.1.2` 的 programmatic runner，避免其 CommonJS CLI 与当前 TypeScript ESM 模块格式冲突。`promises-aplus-tests.d.ts` 提供项目实际使用的最小类型声明。
+
+一次稳定性复跑出现 `871 passing / 1 failing`，失败为 `2.3.4 / undefined / eventually-rejected / timeout of 200ms exceeded`。该 helper 内部先等待 `50ms` 才 reject；原样复跑通过。把内部 Mocha timeout 提高到 `1_000ms` 后，完整套件连续两次 `872/872` 通过，Promise 核心没有为测试环境超时修改。
+
+A+ 全绿主要证明 `promise.then(onFulfilled, onRejected)` 的互操作行为，不代表完整原生 Promise。
+
+#### 当前验证基线
+
+最新 fresh verification：
+
+```text
+Test Files  2 passed
+Vitest      61 / 61 passed
+A+ cases    872 / 872 passed
+typecheck   passed
+strict unused check passed
+git diff --check passed
+```
+
+`pnpm test` 包含 A+ 套件，通常需要 13–15 秒。A+ wrapper 的外层 Vitest timeout 为 `30_000ms`，内部 Mocha timeout 为 `1_000ms`。
+
+#### L08 catch 当前进度
+
+`PromiseLikeType` 与运行时对象已经暴露薄 `catch` API：
+
+```text
+catch(onRejected)
+  → then(undefined, onRejected)
+```
+
+没有新增 catch 专属状态、scheduler、reaction queue 或 resolution 分支。
+
+第一条 catch 测试已经通过：
+
+```text
+passes the rejection reason to catch and fulfills its child with the handler result
+```
+
+它证明 handler 在 flush 前不执行、收到 parent 的同一个 rejection reason、catch 返回独立 child，且 handler 正常返回后 child fulfilled 为 recovery value。
+
+#### 下一步
+
+只新增第二条 catch 测试，不修改实现。明确测试名：
+
+```ts
+it("rejects the catch child when the rejection handler throws", () => {
+```
+
+测试要求：创建 rejected parent；catch handler 抛出指定 error；flush 前 child pending；flush 后 child rejected；child reason 与抛出的 error 是同一个对象。
+
+现有薄委托应让该测试直接 GREEN。第二条审阅通过后，再设计第三条测试，证明 catch handler 返回 thenable 时，child 复用已有 Promise Resolution Procedure 采用其最终状态。
+
+catch 三条测试完成后，还需完成 P01 证据包审阅、六题闭卷讲解、教学实现与原生 Promise 差异记录、最终复盘，以及 `TASKS.md` 的完成状态更新。
+
+当前明确保留的边界：泛型、`finally`、静态组合器、unhandled rejection tracking、species / subclassing、跨 realm、环形 thenable 与超深 thenable 栈行为。
+
+### 历史已提交检查点
 
 - `1fc9b22`：状态机、first-settlement latch、reaction queue、test/runtime scheduler。
 - `13f9375`：独立 child、普通值传播、recovery、handler throw、missing/non-function transparency、siblings 和多级链。
@@ -281,9 +372,9 @@ Parameters<PromiseExecutor>[1] → reject capability
 - `learning-records/0002-promise-child-chaining-and-propagation.md`
 - `learning-records/0003-promise-resolution-locks-and-guard-scope.md`
 
-### 当前测试基线
+### 历史测试基线（L05，54 tests）
 
-当前 Promise 包共有 54 条 Vitest 测试：
+该历史 checkpoint 的 Promise 包共有 54 条 Vitest 测试：
 
 | 顶层测试组 | 数量 | 子分组 |
 | --- | ---: | --- |
@@ -312,7 +403,7 @@ L04 行为与类型 REFACTOR 已通过整体审查：
 
 `TASKS.md` 中 P01-L04 已随本轮 L05 收束一起勾选。P01-L01 的勾选状态尚未核对，不代表 L01 一定有 Required 问题。
 
-### 下一步
+### 历史记录：L05 后的下一步（现已完成）
 
 L05 已收束：三处竞争都有可执行判别证据，阶段记录写在 `packages/01Promise/PHASE-3.md`。下一小步进入 **P01-L06 · 用微任务对齐原生 Promise 调度**，仍然一次只做一个小任务，且只写测试、不改 `promise.ts`。
 
@@ -329,7 +420,7 @@ observe the ordering of handwritten vs native handlers after synchronous code
 
 L05 的开放问题（环形 thenable 的处置策略、深层嵌套是否静默吞掉 `RangeError`、Promises/A+ 套件）已登记在 `PHASE-3.md` 的"已知债务与边界"，不要混入 L06。
 
-### P01-L05 当前进度与边界
+### 历史记录：P01-L05 收束状态
 
 `14bca98` 已开始实现共同的 Promise Resolution Procedure。两个入口现在共享同一条路径：executor 直接 `resolve(x)`，以及 handler return 触发的 child `resolve(x)`。
 
@@ -397,13 +488,13 @@ L05 的开放问题（环形 thenable 的处置策略、深层嵌套是否静默
 ```text
 [ ] clone/pull 最新仓库
 [ ] 阅读 AGENTS.md、MISSION.md、TASKS.md 和本 playbook
-[ ] 阅读三个 learning records 与三个 PHASE 文档
+[ ] 阅读三个 learning records、四个 PHASE 文档与本文件的“当前活动状态”
 [ ] 检查 git status、当前分支和最近提交
 [ ] 运行 node --version 与 pnpm --version，确认处于受支持版本线
 [ ] 进入 packages/01Promise
 [ ] 使用 package-local lockfile 执行 pnpm install --frozen-lockfile
-[ ] 运行 54-test baseline、typecheck 和 strict unused check
-[ ] 确认当前停在 P01-L06 的微任务对齐 checkpoint：L05 的 public capability 双向竞争与 local guard 作用域都有判别测试，环形 thenable 与 Promises/A+ 套件仍未覆盖
+[ ] 运行 61-test baseline、872 项 A+ 套件、typecheck 和 strict unused check
+[ ] 确认当前停在 P01-L08 catch：第一条 catch recovery 测试已通过，下一步是 handler throw 测试
 [ ] 从“下一步”恢复一次只做一个小任务的节奏
 ```
 

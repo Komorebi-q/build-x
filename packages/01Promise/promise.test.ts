@@ -5,6 +5,7 @@ import {
   type FulfillCallback,
   type RejectCallback,
   type PromiseLikeType,
+  adapter,
 } from "./promise";
 import { createTestScheduler } from "./schedule";
 
@@ -306,6 +307,90 @@ describe("MyPromise scheduling", () => {
       expect(events).toEqual(["executor", "sync"]);
       await Promise.resolve();
       expect(events).toEqual(["executor", "sync", "handler"]);
+    });
+
+    it("runs interleaved native and custom promise reactions in FIFO order", async () => {
+      const events: string[] = [];
+      const mp = PromiseLike((resolve) => {
+        resolve("mp value");
+      });
+      const np = new Promise((resolve) => {
+        resolve("np value");
+      });
+      mp.then(() => {
+        events.push("mine-1");
+      });
+      np.then(() => {
+        events.push("np-1");
+      });
+      mp.then(() => {
+        events.push("mine-2");
+      });
+      np.then(() => {
+        events.push("np-2");
+      });
+      events.push("sync-end");
+      expect(events).toEqual(["sync-end"]);
+      await Promise.resolve();
+      expect(events).toEqual(["sync-end", "mine-1", "np-1", "mine-2", "np-2"]);
+    });
+
+    it("runs pending reactions before timer tasks after synchronous settlement", async () => {
+      const events: string[] = [];
+      let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
+      const p = PromiseLike((resolve) => {
+        resolveOuter = resolve;
+      });
+      expect(p.getSnapshot().status).toBe("pending");
+      p.then(() => {
+        events.push("handler");
+      });
+      resolveOuter();
+      setTimeout(() => {
+        events.push("timeout");
+      }, 0);
+      events.push("sync-end");
+      expect(events).toEqual(["sync-end"]);
+      await Promise.resolve();
+      expect(events).toEqual(["sync-end", "handler"]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(events).toEqual(["sync-end", "handler", "timeout"]);
+    });
+
+    it("preserves FIFO order for native and custom reactions around pending settlement", async () => {
+      let resolveOuter: Parameters<PromiseExecutor>[0] = () => {};
+      const mp = PromiseLike((resolve) => {
+        resolveOuter = resolve;
+      });
+      const np = new Promise((resolve) => {
+        resolve("np value");
+      });
+      const events: string[] = [];
+      mp.then(() => {
+        events.push("mp");
+      });
+      np.then(() => {
+        events.push("np before");
+      });
+      resolveOuter();
+      np.then(() => {
+        events.push("np after");
+      });
+      setTimeout(() => {
+        events.push("timeout");
+      });
+      events.push("sync-end");
+      expect(events).toEqual(["sync-end"]);
+      await Promise.resolve();
+      expect(events).toEqual(["sync-end", "np before", "mp", "np after"]);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(events).toEqual([
+        "sync-end",
+        "np before",
+        "mp",
+        "np after",
+        "timeout",
+      ]);
     });
   });
 });
@@ -1400,5 +1485,98 @@ describe("MyPromise thenable resolution", () => {
       expect(snapshot.reason).toBe(reason);
       expect(readCount).toBe(0);
     });
+  });
+});
+
+describe("deferred adapter", () => {
+  it("exposes a pending promise and external settlement capabilities", async () => {
+    const { promise, resolve } = adapter.deferred();
+    const { promise: promise2, reject } = adapter.deferred();
+    const resolveValue = Symbol("resolve value");
+    const rejectValue = Symbol("reject value");
+    expect(promise.getSnapshot().status).toBe("pending");
+    expect(promise2.getSnapshot().status).toBe("pending");
+    const resolveSpy = vi.fn();
+    const rejectSpy = vi.fn();
+    promise.then(resolveSpy);
+    expect(resolveSpy).not.toHaveBeenCalled();
+    resolve(resolveValue);
+    await Promise.resolve();
+    expect(resolveSpy).toHaveBeenCalledOnce();
+    const snapshot1 = promise.getSnapshot();
+    if (snapshot1.status !== "fulfilled") {
+      throw new Error("promise status should be 'fulfilled'");
+    }
+    expect(snapshot1.status).toBe("fulfilled");
+    expect(snapshot1.value).toBe(resolveValue);
+
+    promise2.then(undefined, rejectSpy);
+    expect(rejectSpy).not.toHaveBeenCalled();
+    reject(rejectValue);
+    await Promise.resolve();
+    expect(rejectSpy).toHaveBeenCalledOnce();
+    const snapshot2 = promise2.getSnapshot();
+    if (snapshot2.status !== "rejected") {
+      throw new Error("promise2 status should be 'rejected'");
+    }
+    expect(snapshot2.status).toBe("rejected");
+    expect(snapshot2.reason).toBe(rejectValue);
+  });
+
+  it("exposes deferred through the A+ adapter contract", () => {
+    expect(adapter.deferred).toBeTypeOf("function");
+    const { promise, resolve, reject } = adapter.deferred();
+    const {
+      promise: promise2,
+      resolve: resolve2,
+      reject: reject2,
+    } = adapter.deferred();
+    expect(promise).not.toBe(promise2);
+    expect(resolve).not.toBe(resolve2);
+    expect(reject).not.toBe(reject2);
+    expect(promise.getSnapshot().status).toBe("pending");
+    expect(promise2.getSnapshot().status).toBe("pending");
+    const resolveValue = Symbol("resolve value");
+    resolve(resolveValue);
+    const snapshot1 = promise.getSnapshot();
+    if (snapshot1.status !== "fulfilled") {
+      throw new Error("promise status should be 'fulfilled'");
+    }
+    expect(snapshot1.status).toBe("fulfilled");
+    expect(snapshot1.value).toBe(resolveValue);
+    expect(promise2.getSnapshot().status).toBe("pending");
+  });
+});
+
+describe("MyPromise catch", () => {
+  it("passes the rejection reason to catch and fulfills its child with the handler result", () => {
+    const reason = Symbol("reason");
+    const value = Symbol("value");
+    const scheduler = createTestScheduler();
+    const catchSpy = vi.fn<RejectCallback>((_reason) => {
+      expect(_reason).toBe(reason);
+      return value;
+    });
+    const p = PromiseLike((_, reject) => {
+      reject(reason);
+    }, scheduler);
+    const snapshot = p.getSnapshot();
+    if (snapshot.status !== "rejected") {
+      throw new Error("p status should be 'rejected'");
+    }
+    expect(snapshot.status).toBe("rejected");
+    expect(snapshot.reason).toBe(reason);
+    const c = p.catch(catchSpy);
+    expect(c).not.toBe(p);
+    expect(c.getSnapshot().status).toBe("pending");
+    expect(catchSpy).not.toHaveBeenCalled();
+    scheduler.flushNext();
+    expect(catchSpy).toHaveBeenCalledOnce();
+    const snapshot2 = c.getSnapshot();
+    if (snapshot2.status !== "fulfilled") {
+      throw new Error("c status should be 'fulfilled'");
+    }
+    expect(snapshot2.status).toBe("fulfilled");
+    expect(snapshot2.value).toBe(value);
   });
 });

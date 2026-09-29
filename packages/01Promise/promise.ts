@@ -30,6 +30,7 @@ export type PromiseLikeType = {
     rejectedCallback?: RejectCallback,
   ) => PromiseLikeType;
   getSnapshot: () => State;
+  catch: (rejectedCallback?: RejectCallback) => PromiseLikeType;
 };
 
 export const PromiseLike = (
@@ -96,6 +97,8 @@ export const PromiseLike = (
 
     return child;
   };
+  const catchFn = (rejectedCallback?: RejectCallback): PromiseLikeType =>
+    then(undefined, rejectedCallback);
   const getSnapshot = (): State => {
     switch (status) {
       case "fulfilled": {
@@ -122,6 +125,7 @@ export const PromiseLike = (
   const self = {
     getSnapshot,
     then,
+    catch: catchFn,
   };
   const clearReactions = () => {
     reactions = [];
@@ -216,4 +220,22 @@ export const PromiseLike = (
   }
 
   return self;
+};
+
+export const adapter = {
+  deferred: () => {
+    let resolveCapability: Parameters<PromiseExecutor>[0] = () => {};
+    let rejectCapability: Parameters<PromiseExecutor>[1] = () => {};
+
+    const promise = PromiseLike((resolve, reject) => {
+      resolveCapability = resolve;
+      rejectCapability = reject;
+    });
+
+    return {
+      promise,
+      resolve: resolveCapability,
+      reject: rejectCapability,
+    };
+  },
 };
